@@ -1,0 +1,24 @@
+<UserControl x:Class="TVBoxForWindows.UI.Controls.WorkPosterCard"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:controls="using:TVBoxForWindows.UI.Controls">
+    <Grid x:Name="Root" Width="158" Margin="5,4,5,14" RowSpacing="6" ColumnSpacing="14" PointerEntered="OnEnter" PointerExited="OnExit">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+        <Grid x:Name="Art" Width="158" Height="230" CornerRadius="10" Background="{ThemeResource DiscoverySurface}">
+            <Button x:Name="PlayButton" Click="OnPlay" Padding="0" BorderThickness="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" ToolTipService.ToolTip="查看剧情、人物与片源详情">
+                <controls:PosterImage Work="{Binding}"/>
+            </Button>
+            <StackPanel x:Name="Actions" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Spacing="4" Margin="5" Opacity="0.85">
+                <Button x:Name="Favorite" Content="☆" Click="OnFavorite" Padding="6,2" MinWidth="28" ToolTipService.ToolTip="收藏 / 取消收藏"/>
+            </StackPanel>
+            <Border VerticalAlignment="Bottom" Margin="0" Background="#D0000000" Padding="6" Visibility="{Binding CanResume, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel Spacing="2"><Button Content="续播详情" Click="OnResume" Padding="5,1" HorizontalAlignment="Stretch"/><TextBlock Text="{Binding ProgressLabel}" FontSize="10" Foreground="White" TextWrapping="Wrap"/></StackPanel>
+            </Border>
+
+        </Grid>
+        <controls:RatingStrip x:Name="Scores" Grid.Row="1"/>
+        <Button x:Name="TitleButton" Grid.Row="2" Content="{Binding Title}" Click="OnDetails" Padding="0" Background="Transparent" BorderThickness="0" HorizontalAlignment="Left" MaxWidth="158" MinHeight="22" ToolTipService.ToolTip="点击片名进入详情"/>
+        <TextBlock x:Name="Subtitle" Grid.Row="3" Text="{Binding Subtitle}" Foreground="{ThemeResource DiscoveryMuted}" FontSize="11" TextTrimming="CharacterEllipsis" MaxWidth="158"/>
+    </Grid>
+</UserControl>

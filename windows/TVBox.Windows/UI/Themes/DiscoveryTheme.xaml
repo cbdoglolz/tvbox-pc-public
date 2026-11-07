@@ -1,0 +1,66 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Dark">
+            <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#9582EF"/>
+            <SolidColorBrush x:Key="NavigationViewItemBackgroundSelected" Color="#38305D"/>
+            <SolidColorBrush x:Key="DiscoveryBackground" Color="#10111F"/>
+            <SolidColorBrush x:Key="DiscoverySurface" Color="#202235"/>
+            <SolidColorBrush x:Key="DiscoveryBorder" Color="#3C405C"/>
+            <SolidColorBrush x:Key="DiscoveryText" Color="#F2F1FA"/>
+            <SolidColorBrush x:Key="DiscoveryMuted" Color="#B5B9D0"/>
+            <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#242638"/>
+            <SolidColorBrush x:Key="ControlFillColorDefaultBrush" Color="#2C2E43"/>
+            <SolidColorBrush x:Key="SystemControlHighlightAccentBrush" Color="#A499FF"/>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Light">
+            <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#6854D9"/>
+            <SolidColorBrush x:Key="NavigationViewItemBackgroundSelected" Color="#E8E2FA"/>
+            <SolidColorBrush x:Key="DiscoveryBackground" Color="#FFFFFF"/>
+            <SolidColorBrush x:Key="DiscoverySurface" Color="#FFFFFF"/>
+            <SolidColorBrush x:Key="DiscoveryBorder" Color="#D7DAE9"/>
+            <SolidColorBrush x:Key="DiscoveryText" Color="#202237"/>
+            <SolidColorBrush x:Key="DiscoveryMuted" Color="#575C76"/>
+            <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#FFFFFF"/>
+            <SolidColorBrush x:Key="SystemControlHighlightAccentBrush" Color="#6854D9"/>
+        </ResourceDictionary>
+        <ResourceDictionary x:Key="Default">
+            <SolidColorBrush x:Key="AccentFillColorDefaultBrush" Color="#9582EF"/>
+            <SolidColorBrush x:Key="NavigationViewItemBackgroundSelected" Color="#38305D"/>
+            <SolidColorBrush x:Key="DiscoveryBackground" Color="#10111F"/>
+            <SolidColorBrush x:Key="DiscoverySurface" Color="#202235"/>
+            <SolidColorBrush x:Key="DiscoveryBorder" Color="#3C405C"/>
+            <SolidColorBrush x:Key="DiscoveryText" Color="#F2F1FA"/>
+            <SolidColorBrush x:Key="DiscoveryMuted" Color="#B5B9D0"/>
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+    <CornerRadius x:Key="DiscoveryCardRadius">12</CornerRadius>
+    <Thickness x:Key="DiscoveryPagePadding">24,16,24,16</Thickness>
+    <Style TargetType="Page"><Setter Property="Background" Value="{ThemeResource DiscoveryBackground}"/></Style>
+    <Style TargetType="Button">
+        <Setter Property="CornerRadius" Value="8"/>
+        <Setter Property="Padding" Value="14,8"/>
+        <Setter Property="MinHeight" Value="34"/>
+    </Style>
+    <Style TargetType="ComboBox">
+        <Setter Property="CornerRadius" Value="8"/>
+        <Setter Property="MinHeight" Value="34"/>
+    </Style>
+    <Style TargetType="TextBox"><Setter Property="CornerRadius" Value="8"/></Style>
+    <Style TargetType="AutoSuggestBox"><Setter Property="CornerRadius" Value="8"/></Style>
+    <Style x:Key="DiscoveryPrimaryButton" TargetType="Button" BasedOn="{StaticResource DefaultButtonStyle}">
+        <Setter Property="Background">
+            <Setter.Value><LinearGradientBrush StartPoint="0,0" EndPoint="1,1"><GradientStop Color="#6765E8" Offset="0"/><GradientStop Color="#8F47DB" Offset="1"/></LinearGradientBrush></Setter.Value>
+        </Setter>
+        <Setter Property="Foreground" Value="White"/>
+        <Setter Property="CornerRadius" Value="9"/>
+        <Setter Property="Padding" Value="20,10"/>
+    </Style>
+    <Style x:Key="DiscoveryPanel" TargetType="Border">
+        <Setter Property="Background" Value="{ThemeResource DiscoverySurface}"/>
+        <Setter Property="BorderBrush" Value="{ThemeResource DiscoveryBorder}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="CornerRadius" Value="12"/>
+        <Setter Property="Padding" Value="18"/>
+    </Style>
+</ResourceDictionary>

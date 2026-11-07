@@ -1,0 +1,103 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
+    <RootNamespace>TVBoxForWindows</RootNamespace>
+    <AssemblyName>TVBox</AssemblyName>
+    <Product>TVBox PC</Product>
+    <Authors>TVBox Windows contributors</Authors>
+    <Description>A native Windows TVBox client built with WinUI 3.</Description>
+    <Version>0.8.5</Version>
+    <AssemblyVersion>0.8.5.0</AssemblyVersion>
+    <FileVersion>0.8.5.0</FileVersion>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <UseAppHost>true</UseAppHost>
+    <SelfContained>false</SelfContained>
+    <PublishSingleFile>false</PublishSingleFile>
+    <UseWinUI>true</UseWinUI>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <NoWarn>$(NoWarn);CS8305;CA1416</NoWarn>
+    <ApplicationIcon>Assets\icons\icon.ico</ApplicationIcon>
+    <UserDataPublishExcludes>**\prefs.json;**\preferences.json;**\settings.json;**\configs.json;**\setting_config.json;**\history.json;**\keep.json;**\favorites.json;**\sources.json;**\cookies.json;**\credentials.json;**\tokens.json;**\app.log;**\wexfnwconfig.json;**\*.log;**\*.tmp;**\*.bak;**\*.dmp</UserDataPublishExcludes>
+    <UserDataPublishExcludes>$(UserDataPublishExcludes);**\tmdb.credential*;**\metadata-v4*.sqlite*</UserDataPublishExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);$(UserDataPublishExcludes)</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.22" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.5" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.4654" />
+    <PackageReference Include="Jint" Version="4.14.0" />
+    <PackageReference Include="AngleSharp" Version="1.5.2" />
+    <PackageReference Include="FlyleafLib" Version="3.10.4" />
+    <PackageReference Include="Flyleaf.FFmpeg.Bindings" Version="8.1.0" />
+    <PackageReference Include="FlyleafLib.Controls.WinUI" Version="1.3.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- WinUI promotes project-root None items into publish content. Keep all
+         machine-local state out of every release layout. -->
+    <None Remove="prefs.json;preferences.json;settings.json;configs.json;setting_config.json;history.json;keep.json;favorites.json;sources.json;cookies.json;credentials.json;tokens.json;app.log;wexfnwconfig.json" />
+    <Content Remove="prefs.json;preferences.json;settings.json;configs.json;setting_config.json;history.json;keep.json;favorites.json;sources.json;cookies.json;credentials.json;tokens.json;app.log;wexfnwconfig.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\**\*.*" Exclude="$(UserDataPublishExcludes)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>assets\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
+    </Content>
+    <Content Include="node\**\*.*" Exclude="$(UserDataPublishExcludes)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>node\%(RecursiveDir)%(Filename)%(Extension)</TargetPath>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="ffmpeg\*.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>ffmpeg\%(Filename)%(Extension)</TargetPath>
+    </Content>
+    <Content Include="ffmpeg\LICENSE.txt;ffmpeg\SOURCE.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <TargetPath>ffmpeg\%(Filename)%(Extension)</TargetPath>
+    </Content>
+    <Content Include="..\..\THIRD-PARTY-NOTICES.md" Link="THIRD-PARTY-NOTICES.md">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </Content>
+  </ItemGroup>
+
+  <Target Name="CreateStructuredPublishAppHost"
+          AfterTargets="Publish"
+          Condition="'$(CreateStructuredPublishAppHost)' == 'true'">
+    <Error Condition="'$(StructuredAppHostPath)' == ''"
+           Text="StructuredAppHostPath must be set for a structured publish." />
+    <MakeDir Directories="$([System.IO.Path]::GetDirectoryName('$(StructuredAppHostPath)'))" />
+    <CreateAppHost AppHostSourcePath="$(AppHostSourcePath)"
+                   AppHostDestinationPath="$(StructuredAppHostPath)"
+                   AppBinaryName="libs\$(AssemblyName)$(TargetExt)"
+                   IntermediateAssembly="@(IntermediateAssembly->'%(FullPath)')"
+                   WindowsGraphicalUserInterface="$(_UseWindowsGraphicalUserInterface)"
+                   Retries="$(CopyRetryCount)"
+                   RetryDelayMilliseconds="$(CopyRetryDelayMilliseconds)"
+                   EnableMacOSCodeSign="false"
+                   DisableCetCompat="$(_DisableCetCompat)"
+                   DotNetSearchLocations="AppRelative"
+                   AppRelativeDotNet="..\runtime" />
+  </Target>
+</Project>

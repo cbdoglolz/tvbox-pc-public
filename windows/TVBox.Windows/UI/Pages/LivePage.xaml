@@ -1,0 +1,492 @@
+<Page
+    x:Class="TVBoxForWindows.UI.Pages.LivePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:TVBoxForWindows.UI.Controls"
+    xmlns:fl="using:FlyleafLib.Controls.WinUI"
+    IsTabStop="True"
+    Background="{ThemeResource DiscoveryBackground}">
+
+    <Page.Resources>
+        <SolidColorBrush x:Key="SliderTrackFill" Color="Transparent"/>
+        <SolidColorBrush x:Key="SliderTrackFillPointerOver" Color="Transparent"/>
+        <SolidColorBrush x:Key="SliderTrackFillPressed" Color="Transparent"/>
+        <SolidColorBrush x:Key="SliderTrackFillDisabled" Color="Transparent"/>
+        <SolidColorBrush x:Key="SliderTrackValueFill" Color="#FF78D7E6"/>
+        <SolidColorBrush x:Key="SliderTrackValueFillPointerOver" Color="#FF78D7E6"/>
+        <SolidColorBrush x:Key="SliderTrackValueFillPressed" Color="#FF78D7E6"/>
+        <SolidColorBrush x:Key="SliderTrackValueFillDisabled" Color="#9978D7E6"/>
+        <SolidColorBrush x:Key="SliderThumbBackground" Color="#FF78D7E6"/>
+        <SolidColorBrush x:Key="SliderThumbBackgroundPointerOver" Color="#FF8DE4F0"/>
+        <SolidColorBrush x:Key="SliderThumbBackgroundPressed" Color="#FF65C4D4"/>
+        <x:Double x:Key="SliderTrackThemeHeight">3</x:Double>
+        <Style x:Key="LiveIconButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="36"/>
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+        <Style x:Key="LiveMenuButtonStyle" TargetType="Button">
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="Padding" Value="8,0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+    </Page.Resources>
+
+    <Grid x:Name="RootGrid"
+          Padding="0"
+          Background="Transparent">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel x:Name="PageHeader"
+                    Margin="{StaticResource PagePadding}"
+                    Orientation="Horizontal"
+                    Spacing="12">
+            <TextBlock Text="直播"
+                       Style="{StaticResource PageTitleTextStyle}"
+                       VerticalAlignment="Center"/>
+            <ComboBox x:Name="LiveCombo"
+                      MinWidth="180"
+                      MaxWidth="280"
+                      VerticalAlignment="Center"
+                      DisplayMemberPath="Name"
+                      SelectionChanged="OnLiveChanged"
+                      ToolTipService.ToolTip="切换直播源"/>
+        </StackPanel>
+
+        <Grid x:Name="MainGrid" Grid.Row="1" Margin="24,8,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="LeftCol" Width="210"/>
+                <ColumnDefinition x:Name="MidCol" Width="280"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- 左栏：频道分组 -->
+            <Grid x:Name="LeftPane" Grid.Column="0" Padding="0,0,8,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <ListView x:Name="GroupList" SelectionMode="Single" SelectionChanged="OnGroupChanged">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                <FontIcon Grid.Column="1" FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                          Glyph="{Binding LockGlyph}" FontSize="12" Margin="4,0,0,0"
+                                          Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </Grid>
+
+            <!-- 中栏：频道列表 -->
+            <Grid x:Name="MidPane" Grid.Column="1" Padding="8,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <TextBlock x:Name="GroupTitle" Grid.Row="0" Text="频道" FontSize="17" FontWeight="SemiBold" Margin="10,4,0,10"/>
+                <ListView x:Name="ChannelList" Grid.Row="1" SelectionMode="Single"
+                          IsItemClickEnabled="True" ItemClick="OnChannelClick" RightTapped="OnChannelRightTapped">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <Grid Margin="0,2" MinHeight="42">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding Number}" Width="30" VerticalAlignment="Center"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" FontSize="12"/>
+                                <controls:PosterImage Grid.Column="1" Source="{Binding Logo}" Width="44" Height="30" Margin="0,0,8,0"/>
+                                <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock Text="{Binding NowText}" FontSize="12" TextTrimming="CharacterEllipsis"
+                                               Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                                </StackPanel>
+                                <Button Grid.Column="3" Background="Transparent" BorderThickness="0" Padding="6"
+                                        VerticalAlignment="Center" Click="OnKeepClick">
+                                    <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                              Glyph="{Binding KeepGlyph}" FontSize="14"/>
+                                </Button>
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </Grid>
+
+            <!-- 右栏：播放区 + 锚定在底栏按钮上方的页面内选择面板。 -->
+            <Border x:Name="LivePlayerSurface"
+                    Grid.Column="2"
+                    Margin="{StaticResource LivePlayerSurfaceMargin}"
+                    Background="Transparent"
+                    BorderBrush="Transparent"
+                    BorderThickness="0">
+                <Grid>
+                <Grid x:Name="PlayerArea" Background="Black" RequestedTheme="Dark"
+                      PointerMoved="OnPlayerPointerMoved"
+                      SizeChanged="OnPlayerAreaSizeChanged">
+                <fl:FlyleafHost x:Name="VideoHost" KeyBindings="False" Background="Transparent"/>
+                <Border x:Name="LivePlaybackLoadingBackdrop"
+                        Background="#FF000000"
+                        IsHitTestVisible="False"
+                        Visibility="Collapsed"/>
+
+                <!-- 交互层：接收双击/单击（FlyleafHost 自身可能吞掉指针事件） -->
+                <Grid x:Name="InteractLayer" Background="Transparent"
+                      Tapped="OnPlayerTapped" DoubleTapped="OnPlayerDoubleTapped"/>
+
+                <!-- 顶部信息条 -->
+                <Grid x:Name="TopBar" VerticalAlignment="Top" Padding="20,16,20,28"
+                      PointerPressed="OnCompactDragPressed">
+                    <Grid.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop Color="#B0000000" Offset="0"/>
+                            <GradientStop Color="#00000000" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Grid.Background>
+                    <StackPanel VerticalAlignment="Center" Spacing="2">
+                        <TextBlock x:Name="ChannelNameText" Text="" FontSize="20" FontWeight="SemiBold"/>
+                        <TextBlock x:Name="ProgramText" Text="" FontSize="12"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <TextBlock x:Name="NextProgramTopText" Text="" FontSize="12" Visibility="Collapsed"
+                                   Foreground="#BFFFFFFF"/>
+                    </StackPanel>
+                </Grid>
+
+                <!-- 数字选台缓冲 -->
+                <Border x:Name="NumberOverlay" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Background="#A0000000" CornerRadius="8" Padding="24,12">
+                    <TextBlock x:Name="NumberText" Text="" FontSize="56" FontWeight="SemiBold"/>
+                </Border>
+
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="14">
+                    <ProgressRing x:Name="LoadingRing" Width="48" Height="48"
+                                  IsActive="False" Visibility="Collapsed"/>
+                    <StackPanel x:Name="LiveLoadingSpeedPanel"
+                                Orientation="Horizontal"
+                                HorizontalAlignment="Center"
+                                Spacing="7"
+                                Visibility="Collapsed">
+                        <FontIcon Glyph="&#xE896;" FontSize="12"
+                                  Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                        <TextBlock x:Name="LiveLoadingSpeedText" Text="正在连接…" FontSize="13"
+                                   Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- 直播控制栏：播放、换台、进度、线路、小窗与全屏统一放到底部。 -->
+                <Grid x:Name="BottomBar" VerticalAlignment="Bottom" Padding="20,52,20,14"
+                      SizeChanged="OnBottomBarSizeChanged">
+                    <Grid.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop Color="#00000000" Offset="0"/>
+                            <GradientStop Color="#E6000000" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Grid.Background>
+                    <Border HorizontalAlignment="Stretch" MaxWidth="1480"
+                            Padding="12,8,12,10" Background="#DC111111"
+                            BorderBrush="#33FFFFFF" BorderThickness="1" CornerRadius="8">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Grid x:Name="LiveProgressRow" Grid.Row="0" Height="30" Visibility="Collapsed">
+                                <ProgressBar x:Name="LiveBufferBar" Height="3" Margin="10,0"
+                                             VerticalAlignment="Center" Background="#28FFFFFF"
+                                             Foreground="#72FFFFFF" IsHitTestVisible="False"/>
+                                <Slider x:Name="LiveSeekSlider" Height="30" Padding="10,0" VerticalAlignment="Center"
+                                        Background="Transparent" Foreground="#FF78D7E6" Minimum="0" Maximum="1"
+                                        StepFrequency="1000" IsThumbToolTipEnabled="True"
+                                        ValueChanged="OnLiveSeekChanged"/>
+                            </Grid>
+                            <Grid Grid.Row="1">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="3">
+                                    <Button x:Name="PrevChannelButton" Style="{StaticResource LiveIconButtonStyle}" Click="OnPrevChannel"
+                                            ToolTipService.ToolTip="上一频道">
+                                        <FontIcon Glyph="&#xE892;" FontSize="14"/>
+                                    </Button>
+                                    <Button Style="{StaticResource LiveIconButtonStyle}" Click="OnLivePlayPause"
+                                            ToolTipService.ToolTip="播放/暂停">
+                                        <FontIcon x:Name="LivePlayPauseIcon" Glyph="&#xE768;" FontSize="17"/>
+                                    </Button>
+                                    <Button x:Name="NextChannelButton" Style="{StaticResource LiveIconButtonStyle}" Click="OnNextChannel"
+                                            ToolTipService.ToolTip="下一频道">
+                                        <FontIcon Glyph="&#xE893;" FontSize="14"/>
+                                    </Button>
+                                </StackPanel>
+
+                                <TextBlock x:Name="LiveTimeText" Grid.Column="1" Text="直播"
+                                           Margin="8,0" MinWidth="46" MaxWidth="132"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           TextAlignment="Center" TextTrimming="CharacterEllipsis"
+                                           FontSize="12" Foreground="#CCFFFFFF"/>
+
+                                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="3">
+                                    <Button x:Name="ChannelButton"
+                                            Style="{StaticResource LiveIconButtonStyle}"
+                                            Click="OnOpenChannelPane"
+                                            ToolTipService.ToolTip="选择频道">
+                                        <FontIcon Glyph="{StaticResource EpisodePickerGlyph}" FontSize="15"/>
+                                    </Button>
+                                    <Button x:Name="LineButton" Style="{StaticResource LiveMenuButtonStyle}"
+                                            ToolTipService.ToolTip="切换线路"
+                                            Click="OnOpenLinePanel">
+                                        <StackPanel Orientation="Horizontal" Spacing="5">
+                                            <TextBlock x:Name="LineText" Text="线路" MaxWidth="92" TextTrimming="CharacterEllipsis"/>
+                                            <FontIcon x:Name="LineChevron" Glyph="&#xE70D;" FontSize="9"/>
+                                        </StackPanel>
+                                    </Button>
+                                    <Button x:Name="LivePipButton" Style="{StaticResource LiveIconButtonStyle}"
+                                            Click="OnLivePip" ToolTipService.ToolTip="小窗模式"
+                                            AutomationProperties.Name="开启小窗模式">
+                                        <Grid Width="18" Height="18">
+                                            <Grid x:Name="LivePipEnterIcon">
+                                                <Path Data="M8,15.25 H2.75 A1.25,1.25 0 0 1 1.5,14 V4 A1.25,1.25 0 0 1 2.75,2.75 H15.25 A1.25,1.25 0 0 1 16.5,4 V8.5 M10,9.75 H15.25 A1.25,1.25 0 0 1 16.5,11 V14 A1.25,1.25 0 0 1 15.25,15.25 H10 A1.25,1.25 0 0 1 8.75,14 V11 A1.25,1.25 0 0 1 10,9.75 Z"
+                                                      Stroke="White" StrokeThickness="1.3" StrokeLineJoin="Round"
+                                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                                                <Path Data="M4.25,5.25 L8.5,9.5 M5.5,9.5 H8.5 V6.5"
+                                                      Stroke="White" StrokeThickness="1.3" StrokeLineJoin="Round"
+                                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                                            </Grid>
+                                            <Grid x:Name="LivePipExitIcon" Visibility="Collapsed">
+                                                <Path Data="M8,15.25 H2.75 A1.25,1.25 0 0 1 1.5,14 V4 A1.25,1.25 0 0 1 2.75,2.75 H15.25 A1.25,1.25 0 0 1 16.5,4 V8.5 M10,9.75 H15.25 A1.25,1.25 0 0 1 16.5,11 V14 A1.25,1.25 0 0 1 15.25,15.25 H10 A1.25,1.25 0 0 1 8.75,14 V11 A1.25,1.25 0 0 1 10,9.75 Z"
+                                                      Stroke="White" StrokeThickness="1.3" StrokeLineJoin="Round"
+                                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                                                <Path Data="M8.5,9.5 L4.25,5.25 M4.25,8.25 V5.25 H7.25"
+                                                      Stroke="White" StrokeThickness="1.3" StrokeLineJoin="Round"
+                                                      StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                                            </Grid>
+                                        </Grid>
+                                    </Button>
+                                    <Button x:Name="FullButton" Style="{StaticResource LiveIconButtonStyle}"
+                                            Click="OnFullClick" ToolTipService.ToolTip="全屏">
+                                        <FontIcon x:Name="LiveFullIcon" Glyph="&#xE740;" FontSize="15"/>
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <Grid x:Name="LiveLineOverlay"
+                      Visibility="Collapsed"
+                      Background="Transparent"
+                      Canvas.ZIndex="50"
+                      SizeChanged="OnLineOverlaySizeChanged"
+                      Tapped="OnLineOverlayTapped">
+                    <Border x:Name="LiveLinePanel"
+                            Width="260"
+                            MaxHeight="380"
+                            Margin="0"
+                            Padding="12"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Top"
+                            Background="#F51A1A1A"
+                            BorderBrush="#33FFFFFF"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource SurfaceCornerRadius}"
+                            Translation="0,0,32"
+                            Tapped="OnLinePanelTapped">
+                        <Border.Shadow>
+                            <ThemeShadow/>
+                        </Border.Shadow>
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Grid Margin="4,0,0,8">
+                                <TextBlock Text="播放线路" FontSize="16" FontWeight="SemiBold"
+                                           VerticalAlignment="Center"/>
+                                <Button HorizontalAlignment="Right" Width="32" Height="32" Padding="0"
+                                        Background="Transparent" BorderThickness="0"
+                                        Click="OnCloseLinePanel" ToolTipService.ToolTip="关闭">
+                                    <FontIcon Glyph="&#xE711;" FontSize="13"/>
+                                </Button>
+                            </Grid>
+                            <ListView x:Name="LiveLineList" Grid.Row="1" MaxHeight="300"
+                                      SelectionMode="Single" IsItemClickEnabled="True"
+                                      ItemClick="OnLinePanelItemClick">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid MinHeight="38" Padding="6,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Label}" VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <FontIcon Grid.Column="1" Glyph="{Binding CheckGlyph}" FontSize="13"
+                                                      Margin="12,0,2,0" VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <!-- 频道选择与播放线路使用同一页面内弹层规格，避免 SplitView
+                     改变播放区布局，并避免路由输入栈内直接改变面板。 -->
+                <Grid x:Name="LiveChannelOverlay"
+                      Visibility="Collapsed"
+                      Background="Transparent"
+                      Canvas.ZIndex="51"
+                      SizeChanged="OnChannelOverlaySizeChanged"
+                      Tapped="OnChannelOverlayTapped">
+                    <Border x:Name="LiveChannelPanel"
+                            Width="280"
+                            MaxHeight="420"
+                            Margin="0"
+                            Padding="12"
+                            HorizontalAlignment="Left"
+                            VerticalAlignment="Top"
+                            Background="#F51A1A1A"
+                            BorderBrush="#33FFFFFF"
+                            BorderThickness="1"
+                            CornerRadius="{StaticResource SurfaceCornerRadius}"
+                            Translation="0,0,32"
+                            Tapped="OnChannelPanelTapped">
+                        <Border.Shadow>
+                            <ThemeShadow/>
+                        </Border.Shadow>
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Grid Margin="4,0,0,8">
+                                <TextBlock Text="选择频道" FontSize="16" FontWeight="SemiBold"
+                                           VerticalAlignment="Center"/>
+                                <Button HorizontalAlignment="Right" Width="32" Height="32" Padding="0"
+                                        Background="Transparent" BorderThickness="0"
+                                        Click="OnCloseChannelPane" ToolTipService.ToolTip="关闭">
+                                    <FontIcon Glyph="&#xE711;" FontSize="13"/>
+                                </Button>
+                            </Grid>
+                            <ListView x:Name="ChannelPaneList"
+                                      Grid.Row="1"
+                                      MaxHeight="320"
+                                      SelectionMode="Single"
+                                      IsItemClickEnabled="True"
+                                      ItemClick="OnChannelPaneItemClick">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid MinHeight="38" Padding="6,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Name}"
+                                                       VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <FontIcon Grid.Column="1"
+                                                      Glyph="{Binding CheckGlyph}"
+                                                      FontSize="13"
+                                                      Margin="12,0,2,0"
+                                                      VerticalAlignment="Center"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </Grid>
+                    </Border>
+                </Grid>
+
+                <InfoBar x:Name="PlayInfo" VerticalAlignment="Bottom" Margin="16,0,16,118" IsOpen="False"/>
+
+                </Grid>
+
+                <!-- The WinUI Flyleaf host uses a directly-bound swap chain, so an
+                     ancestor clip does not reliably remove its square corner pixels. -->
+                <Grid x:Name="LiveCornerMaskLayer"
+                      IsHitTestVisible="False"
+                      Canvas.ZIndex="100">
+                    <Path x:Name="LiveCornerMaskTopLeft"
+                          Width="8" Height="8"
+                          HorizontalAlignment="Left" VerticalAlignment="Top"
+                          Stretch="Fill"
+                          Data="M 0,0 L 1,0 A 1,1 0 0 0 0,1 Z"
+                          Fill="{ThemeResource LayerOnMicaBaseAltFillColorTertiaryBrush}"/>
+                    <Path x:Name="LiveCornerMaskTopRight"
+                          Width="8" Height="8"
+                          HorizontalAlignment="Right" VerticalAlignment="Top"
+                          RenderTransformOrigin="0.5,0.5"
+                          Stretch="Fill"
+                          Data="M 0,0 L 1,0 A 1,1 0 0 0 0,1 Z"
+                          Fill="{ThemeResource LayerOnMicaBaseAltFillColorTertiaryBrush}">
+                        <Path.RenderTransform>
+                            <RotateTransform Angle="90"/>
+                        </Path.RenderTransform>
+                    </Path>
+                    <Path x:Name="LiveCornerMaskBottomRight"
+                          Width="8" Height="8"
+                          HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                          RenderTransformOrigin="0.5,0.5"
+                          Stretch="Fill"
+                          Data="M 0,0 L 1,0 A 1,1 0 0 0 0,1 Z"
+                          Fill="{ThemeResource LayerOnMicaBaseAltFillColorTertiaryBrush}">
+                        <Path.RenderTransform>
+                            <RotateTransform Angle="180"/>
+                        </Path.RenderTransform>
+                    </Path>
+                    <Path x:Name="LiveCornerMaskBottomLeft"
+                          Width="8" Height="8"
+                          HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                          RenderTransformOrigin="0.5,0.5"
+                          Stretch="Fill"
+                          Data="M 0,0 L 1,0 A 1,1 0 0 0 0,1 Z"
+                          Fill="{ThemeResource LayerOnMicaBaseAltFillColorTertiaryBrush}">
+                        <Path.RenderTransform>
+                            <RotateTransform Angle="270"/>
+                        </Path.RenderTransform>
+                    </Path>
+                </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- 没有直播内容时可直接载入独立直播配置或 CatPawOpen 订阅。 -->
+        <Grid x:Name="GuidePanel"
+              Grid.Row="1"
+              Margin="24,8,24,0"
+              Visibility="Collapsed"
+              Background="Transparent">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Width="420" Spacing="12"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1"
+                        CornerRadius="8" Padding="24">
+                <TextBlock Text="加载直播源" FontSize="18" FontWeight="SemiBold"/>
+                <TextBlock Text="支持直播列表、TVBox 视频配置及 CatPawOpen 订阅。"
+                           TextWrapping="Wrap" FontSize="12"
+                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
+                <TextBox x:Name="GuideUrlBox" PlaceholderText="TXT / M3U / JSON / TVBox / CatPawOpen 地址"/>
+                <Button x:Name="GuideLoadButton" Content="加载" HorizontalAlignment="Right"
+                        Style="{ThemeResource AccentButtonStyle}" Click="OnGuideLoad"/>
+                <InfoBar x:Name="GuideInfo" IsOpen="False"/>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</Page>

@@ -1,0 +1,63 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.22"/>
+    <Compile Include="../../windows/TVBox.Windows/Engine/CatalogArtworkResolver.cs" Link="Engine/CatalogArtworkResolver.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Engine/WorkMediaService.cs" Link="Engine/WorkMediaService.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Engine/WorkRecommendations.cs" Link="Engine/WorkRecommendations.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Core/ImageByteCache.cs" Link="Core/ImageByteCache.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Models/ContinueCard.cs" Link="Models/ContinueCard.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Engine/CatalogYears.cs" Link="Engine/CatalogYears.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Engine/PosterPreference.cs" Link="Engine/PosterPreference.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Engine/PosterMetadataLoader.cs" Link="Engine/PosterMetadataLoader.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Engine/MetadataDetailsService.cs" Link="Engine/MetadataDetailsService.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Engine/DailyDiscovery.cs" Link="Engine/DailyDiscovery.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Core/SourceLearning.cs" Link="Core/SourceLearning.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Core/CacheMaintenance.cs" Link="Core/CacheMaintenance.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Player/DanmakuEngine.cs" Link="Player/DanmakuEngine.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Player/DanmakuSearch.cs" Link="Player/DanmakuSearch.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Models/ResumeProgress.cs" Link="Models/ResumeProgress.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Core/Trans.cs" Link="Core/Trans.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Engine/CatalogIdentity.cs" Link="Engine/CatalogIdentity.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Engine/CatalogLibrary.cs" Link="Engine/CatalogLibrary.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Models/CatalogMetadata.cs" Link="Models/CatalogMetadata.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Models/CatalogQuery.cs" Link="Models/CatalogQuery.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Core/MetadataStore.cs" Link="Core/MetadataStore.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Core/TmdbCredentials.cs" Link="Core/TmdbCredentials.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Engine/CatalogFilters.cs" Link="Engine/CatalogFilters.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Engine/CatalogMetadataParser.cs" Link="Engine/CatalogMetadataParser.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Engine/PersonCatalog.cs" Link="Engine/PersonCatalog.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Engine/LocalizedSynopsis.cs" Link="Engine/LocalizedSynopsis.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Engine/MetadataHttp.cs" Link="Engine/MetadataHttp.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Engine/CatalogQueryProvider.cs" Link="Engine/CatalogQueryProvider.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Engine/CatalogQueryCoordinator.cs" Link="Engine/CatalogQueryCoordinator.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Engine/CatalogHistory.cs" Link="Engine/CatalogHistory.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Models/PlaybackPresentation.cs" Link="Models/PlaybackPresentation.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Models/CatalogSession.cs" Link="Models/CatalogSession.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Player/MediaSnapshot.cs" Link="Player/MediaSnapshot.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Core/AppPaths.cs" Link="Core/AppPaths.cs" />
+    <Compile Include="../../windows/TVBox.Windows/Core/BuiltInSources.cs" Link="Core/BuiltInSources.cs" />
+    <Compile Include="../../windows/TVBox.Windows/Core/DurableJsonFile.cs" Link="Core/DurableJsonFile.cs" />
+    <Compile Include="../../windows/TVBox.Windows/Core/JsonUtil.cs" Link="Core/JsonUtil.cs" />
+    <Compile Include="../../windows/TVBox.Windows/Core/Logger.cs" Link="Core/Logger.cs" />
+    <Compile Include="../../windows/TVBox.Windows/Core/Setting.cs" Link="Core/Setting.cs" />
+    <Compile Include="../../windows/TVBox.Windows/Core/Stores.cs" Link="Core/Stores.cs" />
+    <Compile Include="../../windows/TVBox.Windows/Core/Decoder.cs" Link="Core/Decoder.cs" />
+    <Compile Include="../../windows/TVBox.Windows/Models/CommonModels.cs" Link="Models/CommonModels.cs" />
+    <Compile Include="../../windows/TVBox.Windows/Models/CatalogModels.cs" Link="Models/CatalogModels.cs" />
+    <Compile Include="../../windows/TVBox.Windows/Models/VodModels.cs" Link="Models/VodModels.cs" />
+    <Compile Include="../../windows/TVBox.Windows/Engine/TitleMatchRules.cs" Link="Engine/TitleMatchRules.cs" />
+    <Compile Include="../../windows/TVBox.Windows/Engine/MediaProbe.cs" Link="Engine/MediaProbe.cs" />
+    <Compile Include="../../windows/TVBox.Windows/Engine/SourceDiscovery.cs" Link="Engine/SourceDiscovery.cs" />
+    <Compile Include="../../windows/TVBox.Windows/Player/SubtitlePresentation.cs" Link="Player/SubtitlePresentation.cs" />
+      <Compile Include="../../windows/TVBox.Windows/Engine/ArtworkRequestGate.cs" Link="Engine/ArtworkRequestGate.cs" />
+</ItemGroup>
+  <ItemGroup>
+    <Content Include="../../windows/TVBox.Windows/Assets/catalog/default.json" Link="assets/catalog/default.json" CopyToOutputDirectory="PreserveNewest" />
+</ItemGroup>
+</Project>

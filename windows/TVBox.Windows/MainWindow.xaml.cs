@@ -1,0 +1,1145 @@
+using TVBoxForWindows.Core;
+using TVBoxForWindows.Engine;
+using TVBoxForWindows.Live;
+using TVBoxForWindows.Models;
+using TVBoxForWindows.Server;
+using TVBoxForWindows.UI;
+using TVBoxForWindows.UI.Pages;
+using System.Numerics;
+using System.Runtime.InteropServices.WindowsRuntime;
+using Microsoft.UI;
+using Microsoft.UI.Composition;
+using Microsoft.UI.Input;
+using Microsoft.UI.Windowing;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Media.Imaging;
+using Windows.Graphics;
+using Windows.Storage.Streams;
+
+namespace TVBoxForWindows;
+
+/// <summary>应用壳：Mica 背景、自绘标题栏、紧凑导航、配置加载与 LocalServer 事件接线。</summary>
+public sealed partial class MainWindow : Window
+{
+    const double TitleBarHeight = 52;
+    const double CompactPaneWidth = 48;
+    const int ShellLayoutSettleDelayMs = 160;
+    const int PlaybackWindowSampleIntervalMs = 16;
+    const int PlaybackWindowQuietPeriodMs = 48;
+    const int PlaybackWindowMinimumSettleMs = 64;
+    const int PlaybackWindowMaximumSettleMs = 600;
+    const int PlaybackContentFadeDurationMs = 120;
+    const float PlaybackTransitionOpacity = 0.985f;
+    readonly WindowPresentationManager _presentation;
+    readonly TrayService _tray;
+    InputNonClientPointerSource _titleBarInput;
+    XamlRoot _titleBarXamlRoot;
+    Microsoft.UI.Dispatching.DispatcherQueueTimer _shellLayoutRefreshTimer;
+    Microsoft.UI.Dispatching.DispatcherQueueTimer _playbackWindowTransitionTimer;
+    long _playbackWindowTransitionStartedAt;
+    long _playbackWindowLastChangedAt;
+    int _playbackWindowStableSamples;
+    int _playbackWindowLastX;
+    int _playbackWindowLastY;
+    int _playbackWindowLastWidth;
+    int _playbackWindowLastHeight;
+    double _playbackRootLastWidth;
+    double _playbackRootLastHeight;
+    bool _playbackWindowTransitionActive;
+    bool _playbackWindowOperationCompleted;
+    bool _immersive;
+    bool _immersiveBorderless;
+    bool _navigationPaneOpen;
+    bool _shellRestorePending;
+    int _shellLayoutRefreshGeneration;
+    bool _closed;
+    bool _allowWindowClose;
+    bool _sourceSetupRequired;
+    bool _sourceSetupLoading;
+    string _activeSection = "home";
+    string _loadedVodConfigUrl;
+    Task _initialVodRestoreTask = Task.CompletedTask;
+    Task _initialLiveRestoreTask = Task.CompletedTask;
+
+    public MainWindow()
+    {
+        InitializeComponent();
+        VersionLabel.Text = "TVBox PC · v" + BuildInfo.Version;
+        ReleaseDateLabel.Text = "发布于 " + BuildInfo.ReleaseDate;
+        foreach (var sectionFrame in SectionFrames()) TVBoxForWindows.UI.Controls.CatalogArtworkLifecycle.Watch(sectionFrame);
+        ApplyDiscoveryTheme();
+        ThemeManager.Changed += ApplyDiscoveryTheme;
+        var searchKey = new Microsoft.UI.Xaml.Input.KeyboardAccelerator { Key = Windows.System.VirtualKey.K, Modifiers = Windows.System.VirtualKeyModifiers.Control };
+        searchKey.Invoked += (_, e) => { GlobalSearch.Focus(FocusState.Keyboard); e.Handled = true; };
+        RootGrid.KeyboardAccelerators.Add(searchKey);
+        RootGrid.SizeChanged += (_, _) => ApplyNavigationPaneState();
+        foreach (var section in SectionFrames().Where(f => f != PlaybackFrame))
+            section.Navigating += (_, e) =>
+            {
+                if (e.SourcePageType != typeof(PlayerPage)) return;
+                e.Cancel = true;
+                var args = e.Parameter as PlayerArgs;
+                DispatcherQueue.TryEnqueue(() => OpenPlayer(args));
+            };
+        var resourceEntry = Nav.MenuItems.OfType<NavigationViewItem>().First(i => (string)i.Tag == "vod");
+        Nav.MenuItems.Remove(resourceEntry); resourceEntry.Content = "资源（高级）"; Nav.MenuItems.Add(resourceEntry);
+        _presentation = new WindowPresentationManager(this);
+        _tray = new TrayService(this);
+        _tray.Initialize();
+        _tray.ExitRequested += OnTrayExitRequested;
+        WindowFrameStyle.Attach(this, _presentation.PrepareSystemRestore);
+        Title = string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("TVBOX_PC_DATA_DIR")) ? "TVBox PC" : "TVBox PC · QA隔离测试";
+        SystemBackdrop = new MicaBackdrop();
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(DragRegion);
+        TitleBarArea.Loaded += OnTitleBarAreaLoaded;
+        TitleBarArea.SizeChanged += OnTitleBarAreaSizeChanged;
+        GlobalSearch.SizeChanged += OnTitleBarAreaSizeChanged;
+        // 设置任务栏 / Alt-Tab 图标。
+        var iconPath = System.IO.Path.Combine(AppPaths.IconDir, "icon.ico");
+        try
+        {
+            if (!System.IO.File.Exists(iconPath)) throw new System.IO.FileNotFoundException("图标文件不存在", iconPath);
+            AppWindow.SetIcon(iconPath);
+        }
+        catch (Exception e) { Logger.E("WindowIcon", e.Message); }
+        // The old key was also written by transient NavigationView template events,
+        // so it can say "open" even when the user selected collapsed. Only the
+        // settings page writes this new authoritative preference.
+        _navigationPaneOpen = Setting.GetBool("nav_pane_user_open", true);
+        ApplyNavigationPaneState();
+        RootGrid.Loaded += OnRootGridLoaded;
+        Nav.Loaded += OnNavigationViewLoaded;
+        VodConfigService.Instance.Loaded += OnConfigLoaded;
+        AppWindow.Changed += OnAppWindowChanged;
+        AppWindow.Closing += OnAppWindowClosing;
+        Closed += (s, e) =>
+        {
+            _closed = true;
+            _noticeTimer?.Stop(); _badgeTimer?.Stop();
+            ThemeManager.Changed -= ApplyDiscoveryTheme;
+            if (_titleBarXamlRoot != null)
+            {
+                _titleBarXamlRoot.Changed -= OnTitleBarXamlRootChanged;
+                _titleBarXamlRoot = null;
+            }
+            _titleBarInput = null; // The native input site is already destroyed at Closed.
+            VodConfigService.Instance.Loaded -= OnConfigLoaded;
+            AppWindow.Changed -= OnAppWindowChanged;
+            AppWindow.Closing -= OnAppWindowClosing;
+            _tray.ExitRequested -= OnTrayExitRequested;
+            _tray.Dispose();
+            StopShellLayoutRefreshStabilizer();
+            StopPlaybackWindowTransition(true);
+            UnhookServer();
+            LocalServer.Instance.Stop();
+            _presentation.Dispose();
+            WindowFrameStyle.Detach(this);
+            SpiderRuntime.TerminateForExit();
+            AppSessionDiagnostics.Close(); Logger.Shutdown();
+        };
+        HookServer();
+        Startup();
+    }
+
+    Microsoft.UI.Dispatching.DispatcherQueueTimer _noticeTimer;
+    public void ShowNotice(string message)
+    {
+        ActionNotice.Message = message; ActionNotice.IsOpen = true;
+        _noticeTimer ??= DispatcherQueue.CreateTimer(); _noticeTimer.Stop();
+        _noticeTimer.Interval = TimeSpan.FromSeconds(2.5); _noticeTimer.IsRepeating = false;
+        _noticeTimer.Tick -= CloseNotice; _noticeTimer.Tick += CloseNotice; _noticeTimer.Start();
+    }
+    void CloseNotice(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args) => ActionNotice.IsOpen = false;
+    void OnToggleTheme(object sender, RoutedEventArgs e) => ThemeManager.SetMode(ThemeManager.Theme == ElementTheme.Dark ? "light" : "dark");
+    void ApplyDiscoveryTheme()
+    {
+        if (_closed) return;
+        RootGrid.RequestedTheme = ThemeManager.Theme;
+        var dark = ThemeManager.Theme == ElementTheme.Dark;
+        ToolTipService.SetToolTip(ThemeButton, dark ? "切换为豆瓣纯白主题" : "切换为奈飞蓝黑紫主题");
+        var bar = AppWindow.TitleBar;
+        bar.ButtonForegroundColor = dark ? Colors.White : Colors.Black;
+        bar.ButtonInactiveForegroundColor = dark ? Windows.UI.Color.FromArgb(255, 174, 177, 202) : Windows.UI.Color.FromArgb(255, 92, 92, 100);
+        bar.ButtonBackgroundColor = Colors.Transparent; bar.ButtonInactiveBackgroundColor = Colors.Transparent;
+        bar.ButtonHoverForegroundColor = dark ? Colors.White : Colors.Black;
+        bar.ButtonHoverBackgroundColor = dark ? Windows.UI.Color.FromArgb(255, 56, 48, 93) : Windows.UI.Color.FromArgb(255, 232, 226, 250);
+    }
+    string _detailsReturnSection = "home";
+    public void OpenCatalogWork(CatalogItem work, bool explicitPlay = false) => CatalogActions.Open(FrameFor(_activeSection), work, explicitPlay);
+    public void OpenWorkDetails(CatalogItem work)
+    {
+        if (FrameFor(_activeSection)?.Content is HomePage home) home.CaptureState();
+        if (FrameFor(_activeSection)?.Content is CatalogBrowsePage catalog) catalog.CaptureState();
+        if (_activeSection != "work-details") _detailsReturnSection = _activeSection;
+        ActivateSection("work-details", WorkDetailsFrame, typeof(WorkDetailsPage), work.Copy());
+        WorkDetailsFrame.BackStack.Clear();
+    }
+    public void ReturnFromWorkDetails()
+    {
+        var target = FrameFor(_detailsReturnSection);
+        ActivateSection(_detailsReturnSection, target, target.Content?.GetType() ?? typeof(HomePage));
+    }
+
+    void OnAppWindowClosing(AppWindow sender, AppWindowClosingEventArgs args)
+    {
+        Logger.D("Lifecycle", "Window closing requested");
+        if (!_allowWindowClose && Setting.MinimizeToTray && _tray.HideWindow()) { args.Cancel = true; return; }
+        if (PlaybackFrame.Content is PlayerPage player) player.ShutdownPlayback();
+        GlobalSearch.IsEnabled = false; Nav.Focus(FocusState.Programmatic);
+        ClearTitleBarPassthroughRegion(); _titleBarInput = null;
+    }
+
+    void OnTrayExitRequested(object sender, EventArgs e)
+    {
+        _allowWindowClose = true;
+        Close();
+    }
+
+    async void OnRootGridLoaded(object sender, RoutedEventArgs e)
+    {
+        RootGrid.Loaded -= OnRootGridLoaded;
+        var path = System.IO.Path.Combine(AppPaths.IconDir, "icon-title.png");
+        try
+        {
+            if (!File.Exists(path)) throw new FileNotFoundException("标题栏图标文件不存在", path);
+            var bytes = await File.ReadAllBytesAsync(path);
+            using var stream = new InMemoryRandomAccessStream();
+            await stream.WriteAsync(bytes.AsBuffer());
+            stream.Seek(0);
+            var image = new BitmapImage();
+            await image.SetSourceAsync(stream);
+            if (!_closed) BrandIcon.Source = image;
+        }
+        catch (Exception exception)
+        {
+            Logger.E("TitleIcon", exception.Message);
+        }
+        QueueTitleBarPassthroughUpdate();
+    }
+
+    void OnTitleBarAreaLoaded(object sender, RoutedEventArgs e)
+    {
+        var xamlRoot = TitleBarArea.XamlRoot;
+        if (!ReferenceEquals(_titleBarXamlRoot, xamlRoot))
+        {
+            if (_titleBarXamlRoot != null) _titleBarXamlRoot.Changed -= OnTitleBarXamlRootChanged;
+            _titleBarXamlRoot = xamlRoot;
+            if (_titleBarXamlRoot != null) _titleBarXamlRoot.Changed += OnTitleBarXamlRootChanged;
+        }
+        QueueTitleBarPassthroughUpdate();
+    }
+
+    void OnTitleBarAreaSizeChanged(object sender, SizeChangedEventArgs e) => QueueTitleBarPassthroughUpdate();
+
+    void OnTitleBarXamlRootChanged(XamlRoot sender, XamlRootChangedEventArgs args) =>
+        QueueTitleBarPassthroughUpdate();
+
+    void QueueTitleBarPassthroughUpdate()
+    {
+        if (_closed) return;
+        if (_immersive)
+        {
+            ClearTitleBarPassthroughRegion();
+            return;
+        }
+        DispatcherQueue.TryEnqueue(UpdateTitleBarPassthroughRegion);
+    }
+
+    void UpdateTitleBarPassthroughRegion()
+    {
+        if (_closed || _immersive || GlobalSearch.XamlRoot == null ||
+            GlobalSearch.ActualWidth <= 0 || GlobalSearch.ActualHeight <= 0) return;
+        try
+        {
+            var bounds = GlobalSearch.TransformToVisual(null).TransformBounds(
+                new Windows.Foundation.Rect(0, 0, GlobalSearch.ActualWidth, GlobalSearch.ActualHeight));
+            var scale = GlobalSearch.XamlRoot.RasterizationScale;
+            var left = (int)Math.Floor(bounds.X * scale);
+            var top = (int)Math.Floor(bounds.Y * scale);
+            var right = (int)Math.Ceiling((bounds.X + bounds.Width) * scale);
+            var bottom = (int)Math.Ceiling((bounds.Y + bounds.Height) * scale);
+            var rect = new RectInt32(
+                left,
+                top,
+                Math.Max(1, right - left),
+                Math.Max(1, bottom - top));
+            _titleBarInput ??= InputNonClientPointerSource.GetForWindowId(AppWindow.Id);
+            _titleBarInput.SetRegionRects(NonClientRegionKind.Passthrough, [rect, ThemeButtonBounds()]);
+        }
+        catch (Exception e)
+        {
+            Logger.E("TitleBarInput", e.Message);
+        }
+    }
+
+    RectInt32 ThemeButtonBounds()
+    {
+        var b = ThemeButton.TransformToVisual(null).TransformBounds(new Windows.Foundation.Rect(0, 0, ThemeButton.ActualWidth, ThemeButton.ActualHeight));
+        var s = ThemeButton.XamlRoot.RasterizationScale;
+        return new((int)(b.X*s), (int)(b.Y*s), Math.Max(1, (int)(b.Width*s)), Math.Max(1, (int)(b.Height*s)));
+    }
+    Microsoft.UI.Dispatching.DispatcherQueueTimer _badgeTimer;
+    void StartPlaybackBadge()
+    {
+        if (_badgeTimer != null) return;
+        _badgeTimer = DispatcherQueue.CreateTimer(); _badgeTimer.Interval = TimeSpan.FromSeconds(1);
+        _badgeTimer.Tick += (_, _) => {
+            if (_closed || PlaybackFrame.Content is not PlayerPage page) return;
+            var status = page.SidebarStatus;
+            PlayingBadge.Update(status.Title, status.Position, status.Duration, status.Playing);
+        };
+        _badgeTimer.Start();
+    }
+
+    void ClearTitleBarPassthroughRegion()
+    {
+        try { _titleBarInput?.ClearRegionRects(NonClientRegionKind.Passthrough); }
+        catch (Exception e) { Logger.E("TitleBarInput", e.Message); }
+    }
+
+    public void SetImmersive(bool immersive)
+    {
+        if (_immersive == immersive)
+        {
+            Nav.CompactPaneLength = immersive ? 0 : CompactPaneWidth;
+            // ApplyPresentationMode runs before presenter changes. Reset a previous
+            // borderless full-screen style so a following compact presenter remains resizable.
+            if (immersive && _immersiveBorderless)
+            {
+                _immersiveBorderless = false;
+                WindowFrameStyle.SetImmersive(this, true, false);
+            }
+            return;
+        }
+        _immersive = immersive;
+        _immersiveBorderless = false;
+        WindowFrameStyle.SetImmersive(this, immersive, false);
+        if (immersive)
+        {
+            _shellRestorePending = false;
+            _shellLayoutRefreshGeneration++;
+            StopShellLayoutRefreshStabilizer();
+            // NavigationView keeps its compact rail width in the content layout
+            // even while the pane is hidden. Playback must occupy the full client
+            // area, so remove that reserved width for both full-screen and PiP.
+            Nav.CompactPaneLength = 0;
+            // Close while hidden so an expanded pane cannot be painted for one frame
+            // when the shell is restored after a presenter transition.
+            Nav.IsPaneOpen = false;
+            Nav.IsPaneVisible = false;
+        }
+        else Nav.CompactPaneLength = CompactPaneWidth;
+        RootGrid.RowDefinitions[0].Height = immersive ? new GridLength(0) : new GridLength(TitleBarHeight);
+        TitleBarArea.Visibility = immersive ? Visibility.Collapsed : Visibility.Visible;
+        QueueTitleBarPassthroughUpdate();
+        var background = immersive ? new SolidColorBrush(Colors.Black) : null;
+        RootGrid.Background = background;
+        Nav.Background = background;
+        PageHost.Background = background;
+        SystemBackdrop = immersive ? null : new MicaBackdrop();
+        if (!immersive)
+        {
+            // The playback page leaves immersive mode before restoring the native
+            // presenter and bounds. Keep the pane hidden until those changes settle.
+            _shellRestorePending = true;
+            QueueShellLayoutRefresh();
+        }
+    }
+
+    public bool IsNavigationPaneOpen => _navigationPaneOpen;
+
+    /// <summary>
+    /// Completes after the persisted video source has either been restored or
+    /// downgraded to the non-blocking refresh warning.
+    /// </summary>
+    public Task InitialVodRestoreTask => _initialVodRestoreTask;
+
+    public Task InitialLiveRestoreTask => _initialLiveRestoreTask;
+
+    public bool IsPlaybackWindowTransitionActive => _playbackWindowTransitionActive;
+
+    public bool EnterPlaybackFullScreen()
+    {
+        BeginPlaybackWindowTransition();
+        try { _presentation.EnterFullScreen(); return true; }
+        catch (Exception e)
+        {
+            Logger.E("Presentation", "进入全屏失败：" + e.Message);
+            try { _presentation.Restore(); } catch { }
+            return false;
+        }
+        finally { CompletePlaybackWindowTransition(); }
+    }
+
+    public bool EnterPlaybackCompact()
+    {
+        BeginPlaybackWindowTransition();
+        try { _presentation.EnterCompact(760, 460); return true; }
+        catch (Exception e)
+        {
+            Logger.E("Presentation", "进入小窗失败：" + e.Message);
+            try { _presentation.Restore(); } catch { }
+            return false;
+        }
+        finally { CompletePlaybackWindowTransition(); }
+    }
+
+    public void BeginCompactDrag() => _presentation.BeginCompactDrag();
+
+    public bool RestorePlaybackWindow()
+    {
+        BeginPlaybackWindowTransition();
+        try
+        {
+            if (_immersive)
+            {
+                _immersiveBorderless = false;
+                WindowFrameStyle.SetImmersive(this, true, false);
+            }
+            _presentation.Restore();
+            QueueShellLayoutRefresh();
+            return true;
+        }
+        catch (Exception e)
+        {
+            Logger.E("Presentation", "恢复主窗口失败：" + e.Message);
+            QueueShellLayoutRefresh();
+            return false;
+        }
+        finally { CompletePlaybackWindowTransition(); }
+    }
+
+    void BeginPlaybackWindowTransition()
+    {
+        StopPlaybackWindowTransition(false);
+        _playbackWindowTransitionActive = true;
+        _playbackWindowOperationCompleted = false;
+        _playbackWindowStableSamples = 0;
+        _playbackWindowTransitionStartedAt = Environment.TickCount64;
+        _playbackWindowLastChangedAt = _playbackWindowTransitionStartedAt;
+        CapturePlaybackWindowSample();
+        WindowFrameStyle.SetTransitionsDisabled(this, true);
+        try
+        {
+            var visual = ElementCompositionPreview.GetElementVisual(RootGrid);
+            visual.StopAnimation("Opacity");
+            visual.Opacity = PlaybackTransitionOpacity;
+        }
+        catch { }
+    }
+
+    void CompletePlaybackWindowTransition()
+    {
+        if (!_playbackWindowTransitionActive) return;
+        _playbackWindowOperationCompleted = true;
+        _playbackWindowTransitionTimer ??= DispatcherQueue.CreateTimer();
+        _playbackWindowTransitionTimer.Stop();
+        _playbackWindowTransitionTimer.Interval = TimeSpan.FromMilliseconds(PlaybackWindowSampleIntervalMs);
+        _playbackWindowTransitionTimer.IsRepeating = true;
+        _playbackWindowTransitionTimer.Tick -= OnPlaybackWindowTransitionSettled;
+        _playbackWindowTransitionTimer.Tick += OnPlaybackWindowTransitionSettled;
+        _playbackWindowTransitionTimer.Start();
+    }
+
+    void OnPlaybackWindowTransitionSettled(
+        Microsoft.UI.Dispatching.DispatcherQueueTimer sender,
+        object args)
+    {
+        if (!ReferenceEquals(sender, _playbackWindowTransitionTimer) ||
+            !_playbackWindowTransitionActive ||
+            !_playbackWindowOperationCompleted) return;
+
+        var now = Environment.TickCount64;
+        if (PlaybackWindowSampleChanged())
+        {
+            _playbackWindowLastChangedAt = now;
+            _playbackWindowStableSamples = 0;
+        }
+        else _playbackWindowStableSamples++;
+
+        var elapsed = now - _playbackWindowTransitionStartedAt;
+        var quiet = now - _playbackWindowLastChangedAt;
+        var settled = elapsed >= PlaybackWindowMinimumSettleMs &&
+            quiet >= PlaybackWindowQuietPeriodMs &&
+            _playbackWindowStableSamples >= 2;
+        if (!settled && elapsed < PlaybackWindowMaximumSettleMs) return;
+
+        StopPlaybackWindowTransitionTimer();
+        SynchronizeActivePlaybackWindow();
+        _playbackWindowTransitionActive = false;
+        _playbackWindowOperationCompleted = false;
+        WindowFrameStyle.SetTransitionsDisabled(this, false);
+        FadeInPlaybackWindowContent();
+    }
+
+    void CapturePlaybackWindowSample()
+    {
+        _playbackWindowLastX = AppWindow.Position.X;
+        _playbackWindowLastY = AppWindow.Position.Y;
+        _playbackWindowLastWidth = AppWindow.Size.Width;
+        _playbackWindowLastHeight = AppWindow.Size.Height;
+        _playbackRootLastWidth = RootGrid.ActualWidth;
+        _playbackRootLastHeight = RootGrid.ActualHeight;
+    }
+
+    bool PlaybackWindowSampleChanged()
+    {
+        var position = AppWindow.Position;
+        var size = AppWindow.Size;
+        var rootWidth = RootGrid.ActualWidth;
+        var rootHeight = RootGrid.ActualHeight;
+        var changed = position.X != _playbackWindowLastX ||
+            position.Y != _playbackWindowLastY ||
+            size.Width != _playbackWindowLastWidth ||
+            size.Height != _playbackWindowLastHeight ||
+            Math.Abs(rootWidth - _playbackRootLastWidth) >= 0.5 ||
+            Math.Abs(rootHeight - _playbackRootLastHeight) >= 0.5;
+        if (changed) CapturePlaybackWindowSample();
+        return changed;
+    }
+
+    void SynchronizeActivePlaybackWindow()
+    {
+        try
+        {
+            RootGrid.InvalidateMeasure();
+            RootGrid.InvalidateArrange();
+            RootGrid.UpdateLayout();
+            if (FrameFor(_activeSection)?.Content is INavigationPlayback playback)
+                playback.SynchronizePlaybackWindow();
+        }
+        catch (Exception e)
+        {
+            Logger.E("Presentation", "同步播放窗口布局失败：" + e.Message);
+        }
+    }
+
+    void FadeInPlaybackWindowContent()
+    {
+        try
+        {
+            var visual = ElementCompositionPreview.GetElementVisual(RootGrid);
+            if (!new Windows.UI.ViewManagement.UISettings().AnimationsEnabled)
+            {
+                visual.Opacity = 1;
+                return;
+            }
+
+            var compositor = visual.Compositor;
+            var animation = compositor.CreateScalarKeyFrameAnimation();
+            animation.Duration = TimeSpan.FromMilliseconds(PlaybackContentFadeDurationMs);
+            animation.InsertKeyFrame(
+                0,
+                Math.Clamp(visual.Opacity, PlaybackTransitionOpacity, 1f),
+                compositor.CreateCubicBezierEasingFunction(
+                    new Vector2(0.2f, 0),
+                    new Vector2(0, 1)));
+            animation.InsertKeyFrame(1, 1);
+            visual.StartAnimation("Opacity", animation);
+        }
+        catch
+        {
+            try { ElementCompositionPreview.GetElementVisual(RootGrid).Opacity = 1; }
+            catch { }
+        }
+    }
+
+    void StopPlaybackWindowTransition(bool resetVisual)
+    {
+        StopPlaybackWindowTransitionTimer();
+        _playbackWindowTransitionActive = false;
+        _playbackWindowOperationCompleted = false;
+        WindowFrameStyle.SetTransitionsDisabled(this, false);
+        if (!resetVisual) return;
+        try
+        {
+            var visual = ElementCompositionPreview.GetElementVisual(RootGrid);
+            visual.StopAnimation("Opacity");
+            visual.Opacity = 1;
+        }
+        catch { }
+    }
+
+    void StopPlaybackWindowTransitionTimer()
+    {
+        var timer = _playbackWindowTransitionTimer;
+        _playbackWindowTransitionTimer = null;
+        if (timer == null) return;
+        timer.Stop();
+        timer.Tick -= OnPlaybackWindowTransitionSettled;
+    }
+
+    public void RefreshImmersiveFrame(bool borderless = false)
+    {
+        if (!_immersive) return;
+        _immersiveBorderless = borderless;
+        WindowFrameStyle.SetImmersive(this, true, borderless);
+    }
+
+    void OnAppWindowChanged(AppWindow sender, AppWindowChangedEventArgs args)
+    {
+        if (_closed) return;
+
+        if (_playbackWindowTransitionActive &&
+            (args.DidPresenterChange || args.DidSizeChange || args.DidPositionChange))
+        {
+            _playbackWindowLastChangedAt = Environment.TickCount64;
+            _playbackWindowStableSamples = 0;
+        }
+
+        if (!_immersive)
+        {
+            if (_shellRestorePending &&
+                (args.DidPresenterChange || args.DidSizeChange || args.DidPositionChange))
+                QueueShellLayoutRefresh();
+            return;
+        }
+
+        if (!args.DidPresenterChange) return;
+
+        WindowFrameStyle.SetImmersive(this, true, _immersiveBorderless);
+        // AppWindow presenter transitions finish asynchronously. Reapply on the next
+        // layout turn so the presenter cannot restore its default light frame afterward.
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (_immersive) WindowFrameStyle.SetImmersive(this, true, _immersiveBorderless);
+        });
+    }
+
+    void QueueShellLayoutRefresh()
+    {
+        if (_closed || _immersive) return;
+
+        _shellRestorePending = true;
+        var generation = ++_shellLayoutRefreshGeneration;
+        StartShellLayoutRefreshStabilizer();
+
+        // Presenter restoration emits presenter, position, and size notifications on
+        // separate turns. Only the newest queued refresh may reveal the shell.
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+        {
+            if (_closed || _immersive || generation != _shellLayoutRefreshGeneration) return;
+            ApplyNavigationPaneState();
+        });
+    }
+
+    void StartShellLayoutRefreshStabilizer()
+    {
+        if (_shellLayoutRefreshTimer == null)
+        {
+            _shellLayoutRefreshTimer = DispatcherQueue.CreateTimer();
+            _shellLayoutRefreshTimer.Interval = TimeSpan.FromMilliseconds(ShellLayoutSettleDelayMs);
+            _shellLayoutRefreshTimer.IsRepeating = false;
+            _shellLayoutRefreshTimer.Tick += OnShellLayoutRefreshTick;
+        }
+        else _shellLayoutRefreshTimer.Stop();
+        _shellLayoutRefreshTimer.Start();
+    }
+
+    void OnShellLayoutRefreshTick(
+        Microsoft.UI.Dispatching.DispatcherQueueTimer sender,
+        object args)
+    {
+        if (!ReferenceEquals(sender, _shellLayoutRefreshTimer)) return;
+        var generation = _shellLayoutRefreshGeneration;
+        StopShellLayoutRefreshStabilizer();
+        if (_closed || _immersive)
+            return;
+
+        ApplyNavigationPaneState();
+        CompleteShellLayoutRefresh(generation);
+    }
+
+    void StopShellLayoutRefreshStabilizer()
+    {
+        var timer = _shellLayoutRefreshTimer;
+        _shellLayoutRefreshTimer = null;
+        if (timer == null) return;
+
+        timer.Stop();
+        timer.Tick -= OnShellLayoutRefreshTick;
+    }
+
+    void CompleteShellLayoutRefresh(int generation)
+    {
+        if (_closed || _immersive || generation != _shellLayoutRefreshGeneration) return;
+
+        try
+        {
+            RootGrid.InvalidateMeasure();
+            RootGrid.InvalidateArrange();
+            Nav.InvalidateMeasure();
+            Nav.InvalidateArrange();
+            PageHost.InvalidateMeasure();
+            PageHost.InvalidateArrange();
+            foreach (var item in Nav.MenuItems.OfType<NavigationViewItem>())
+            {
+                item.InvalidateMeasure();
+                item.InvalidateArrange();
+                item.Icon?.InvalidateMeasure();
+                item.Icon?.InvalidateArrange();
+            }
+            if (Nav.SettingsItem is NavigationViewItem settingsItem)
+            {
+                settingsItem.InvalidateMeasure();
+                settingsItem.InvalidateArrange();
+                settingsItem.Icon?.InvalidateMeasure();
+                settingsItem.Icon?.InvalidateArrange();
+            }
+            RootGrid.UpdateLayout();
+        }
+        catch (Exception e)
+        {
+            Logger.E("ShellLayout", "刷新导航布局失败：" + e.Message);
+        }
+        finally
+        {
+            if (generation == _shellLayoutRefreshGeneration)
+                _shellRestorePending = false;
+        }
+    }
+
+    public void SetNavigationPaneOpen(bool open)
+    {
+        _navigationPaneOpen = open;
+        Setting.Put("nav_pane_user_open", open);
+        ApplyNavigationPaneState();
+    }
+
+    void OnNavigationViewLoaded(object sender, RoutedEventArgs e)
+    {
+        // NavigationView applies template defaults during its first measure. Reapply
+        // the persisted preference so a collapsed cold start stays collapsed.
+        ApplyNavigationPaneState();
+    }
+
+    void ApplyNavigationPaneState()
+    {
+        if (_closed || _immersive) return;
+
+        // The pane mode is authoritative as well as IsPaneOpen. Left can otherwise
+        // reopen while its template is recreated after a presenter transition.
+        var open = _navigationPaneOpen && (RootGrid.ActualWidth == 0 || RootGrid.ActualWidth >= 1000);
+        Nav.PaneDisplayMode = open
+            ? NavigationViewPaneDisplayMode.Left
+            : NavigationViewPaneDisplayMode.LeftCompact;
+        Nav.CompactPaneLength = CompactPaneWidth;
+        Nav.IsPaneVisible = true;
+        Nav.IsPaneOpen = open;
+    }
+
+    // ---------- 启动流程 ----------
+
+    void Startup()
+    {
+        ActivateSection("home", HomeFrame, typeof(HomePage));
+        var config = BuiltInSources.ResolveStartup();
+
+        // configs.json and prefs.json are recovered independently. If prefs was
+        // missing or damaged, keep using the newest persisted source instead of
+        // treating an existing installation as a first run.
+        if (!string.Equals(Setting.ConfigVod, config.Url, StringComparison.OrdinalIgnoreCase))
+            Setting.ConfigVod = config.Url;
+        _initialVodRestoreTask = LoadLatestAsync(config);
+    }
+
+    async Task LoadLatestAsync(ConfigRecord config)
+    {
+        try
+        {
+            SetLoading(true);
+            await VodConfigService.Instance.LoadStartupAsync(config);
+            _initialLiveRestoreTask = RestoreSavedLiveSourceAsync(config.Url);
+        }
+        catch (Exception e)
+        {
+            if (!_closed) ShowConfiguredLoadFailure(e.Message);
+        }
+        finally { if (!_closed) SetLoading(false); }
+    }
+
+    static async Task RestoreSavedLiveSourceAsync(string vodUrl)
+    {
+        try
+        {
+            if (LiveConfigService.Instance.Lives.Count > 0) return;
+            var config = Stores.ResolveConfig(Setting.ConfigLive, 1);
+            if (config == null || string.IsNullOrWhiteSpace(config.Url)) return;
+            var target = UrlUtil.Convert(config.Url);
+            var canReplaceNodeRuntime = !NodeSource.MaybeNode(target) ||
+                string.Equals(config.Url, vodUrl, StringComparison.OrdinalIgnoreCase);
+            await LiveConfigService.Instance.LoadStartupAsync(config, canReplaceNodeRuntime);
+        }
+        catch (Exception error)
+        {
+            Logger.E("LiveConfig", "后台恢复直播源失败：" + error.Message);
+        }
+    }
+
+    async Task LoadConfigAsync(ConfigRecord config)
+    {
+        try
+        {
+            SetLoading(true);
+            LoadErrorBar.IsOpen = false;
+            await VodConfigService.Instance.LoadAsync(config);
+            if (_sourceSetupRequired) CompleteSourceSetup();
+        }
+        catch (Exception e)
+        {
+            if (_closed) return;
+            if (_sourceSetupRequired) ShowWelcome(e.Message);
+            else ShowConfiguredLoadFailure(e.Message);
+        }
+        finally { if (!_closed) SetLoading(false); }
+    }
+
+    void ShowConfiguredLoadFailure(string error)
+    {
+        // A saved source is not a first-run state. Keep navigation available and
+        // report refresh failures non-modally; Decoder/NodeSource may already have
+        // restored the last-known-good local snapshot before this point.
+        CompleteSourceSetup();
+        NoticeBar.Title = "配置暂时无法刷新";
+        NoticeBar.Message = "已保留本地配置，可稍后重试。" + error;
+        NoticeBar.Severity = InfoBarSeverity.Warning;
+        NoticeBar.IsOpen = true;
+    }
+
+    void ShowWelcome(string error)
+    {
+        _sourceSetupRequired = true;
+        WelcomePanel.Visibility = Visibility.Visible;
+        Nav.IsEnabled = false;
+        GlobalSearch.IsEnabled = false;
+        if (string.IsNullOrEmpty(ConfigUrlBox.Text)) ConfigUrlBox.Text = Setting.ConfigVod ?? "";
+        if (string.IsNullOrEmpty(InitialLiveUrlBox.Text)) InitialLiveUrlBox.Text = Setting.ConfigLive ?? "";
+        if (!string.IsNullOrEmpty(error))
+        {
+            LoadErrorBar.Message = error;
+            LoadErrorBar.IsOpen = true;
+        }
+        DispatcherQueue.TryEnqueue(() => ConfigUrlBox.Focus(FocusState.Programmatic));
+    }
+
+    void SetLoading(bool loading)
+    {
+        _sourceSetupLoading = loading;
+        LoadRing.IsActive = loading;
+        LoadConfigButton.IsEnabled = !loading;
+        ConfigUrlBox.IsEnabled = !loading;
+        InitialLiveUrlBox.IsEnabled = !loading;
+    }
+
+    void OnLoadConfig(object sender, RoutedEventArgs e)
+    {
+        var url = (ConfigUrlBox.Text ?? "").Trim();
+        if (url.Length == 0) { ShowWelcome("请输入点播配置地址"); return; }
+        _ = LoadInitialSourcesAsync(url, (InitialLiveUrlBox.Text ?? "").Trim());
+    }
+
+    void OnConfigUrlKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (e.Key == Windows.System.VirtualKey.Enter) OnLoadConfig(sender, null);
+    }
+
+    async Task LoadInitialSourcesAsync(string vodUrl, string liveUrl)
+    {
+        if (_sourceSetupLoading) return;
+        try
+        {
+            SetLoading(true);
+            LoadErrorBar.IsOpen = false;
+            await VodConfigService.Instance.LoadAsync(Stores.FindConfig(vodUrl, 0));
+
+            string liveError = null;
+            if (!string.IsNullOrWhiteSpace(liveUrl))
+            {
+                try { await LiveConfigService.Instance.LoadAsync(Stores.FindConfig(liveUrl, 1)); }
+                catch (Exception e) { liveError = e.Message; }
+            }
+
+            CompleteSourceSetup();
+            if (!string.IsNullOrEmpty(liveError))
+            {
+                NoticeBar.Title = "直播源加载失败";
+                NoticeBar.Message = "点播源已加载，可以正常使用。直播源错误：" + liveError;
+                NoticeBar.Severity = InfoBarSeverity.Warning;
+                NoticeBar.IsOpen = true;
+            }
+        }
+        catch (Exception e)
+        {
+            if (!_closed) ShowWelcome(e.Message);
+        }
+        finally
+        {
+            if (!_closed) SetLoading(false);
+        }
+    }
+
+    void CompleteSourceSetup()
+    {
+        _sourceSetupRequired = false;
+        WelcomePanel.Visibility = Visibility.Collapsed;
+        LoadErrorBar.IsOpen = false;
+        Nav.IsEnabled = true;
+        GlobalSearch.IsEnabled = true;
+    }
+
+    /// <summary>配置加载成功（UI 线程）：进入点播页并显示公告。</summary>
+    void OnConfigLoaded()
+    {
+        if (_closed) return;
+        if (_sourceSetupRequired && !_sourceSetupLoading) CompleteSourceSetup();
+        var config = VodConfigService.Instance.Config;
+        var loadedUrl = config?.Url ?? Setting.ConfigVod ?? "";
+        var firstLoad = _loadedVodConfigUrl == null;
+        var changed = !firstLoad &&
+            !string.Equals(_loadedVodConfigUrl, loadedUrl, StringComparison.OrdinalIgnoreCase);
+        _loadedVodConfigUrl = loadedUrl;
+        if (changed)
+        {
+            VodFrame.Navigate(typeof(VodPage));
+            VodFrame.BackStack.Clear();
+        }
+        // Loading playback providers must not replace the independent Douban home.
+        var notice = config?.Notice;
+        if (!string.IsNullOrEmpty(notice))
+        {
+            NoticeBar.Title = "公告";
+            NoticeBar.Message = notice;
+            NoticeBar.Severity = InfoBarSeverity.Informational;
+            NoticeBar.IsOpen = true;
+        }
+    }
+
+    // ---------- 导航 ----------
+
+    void OnNavInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
+    {
+        if (_sourceSetupRequired) return;
+        if (args.IsSettingsInvoked)
+        {
+            ActivateSection("settings", SettingsFrame, typeof(SettingsPage));
+            return;
+        }
+        var tag = args.InvokedItemContainer?.Tag as string;
+        Logger.D("UiNavigation", tag ?? "settings");
+        if (tag == "player") { ActivateSection("player", PlaybackFrame, typeof(PlayerPage)); return; }
+        if (tag is "movie" or "tv" or "anime" or "documentary" or "variety")
+        {
+            OpenCatalog(new CatalogNavigation(tag));
+            return;
+        }
+        if (tag is "search" or "keep" or "history")
+        {
+            var scope = tag == "search" ? "global" : tag == "keep" ? "favorites" : "history";
+            var frame = tag == "search" ? SearchFrame : tag == "keep" ? KeepFrame : HistoryFrame;
+            ActivateSection(tag, frame, typeof(CatalogBrowsePage), new CatalogNavigation("all", scope));
+            return;
+        }
+        if (tag == "home" && HomeFrame.Content is not HomePage)
+        {
+            ActivateSection("home", HomeFrame, typeof(HomePage), navigate: true);
+            return;
+        }
+        if (tag == "vod" && VodFrame.Content is not VodPage)
+        {
+            ActivateSection("vod", VodFrame, typeof(VodPage), navigate: true);
+            return;
+        }
+        var target = tag switch
+        {
+            "home" => (HomeFrame, typeof(HomePage)),
+            "vod" => (VodFrame, typeof(VodPage)),
+            "live" => (LiveFrame, typeof(LivePage)),
+            "search" => (SearchFrame, typeof(SearchPage)),
+            "keep" => (KeepFrame, typeof(KeepPage)),
+            "history" => (HistoryFrame, typeof(HistoryPage)),
+            _ => ((Frame)null, (Type)null),
+        };
+        if (target.Item1 != null) ActivateSection(tag, target.Item1, target.Item2);
+    }
+
+    void ActivateSection(string tag, Frame target, Type rootPage, object parameter = null, bool navigate = false)
+    {
+        var current = FrameFor(_activeSection);
+        if (!ReferenceEquals(current, target) && current?.Content is HomePage backgroundHome) backgroundHome.EnterBackground();
+        if (!ReferenceEquals(current, target) && current?.Content is CatalogBrowsePage backgroundCatalog) backgroundCatalog.EnterBackground();
+        if (current?.Content is WorkDetailsPage detailPage && !ReferenceEquals(current, target)) detailPage.EnterBackground();
+        if (!ReferenceEquals(current, target)) PausePlayback(current);
+
+        foreach (var frame in SectionFrames()) frame.Visibility = ReferenceEquals(frame, target)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        _activeSection = tag;
+        if (navigate || parameter != null) target.Navigate(rootPage, parameter);
+        else if (target.Content == null) target.Navigate(rootPage);
+        if (target.Content is INavigationPlayback playback) playback.ActivateAfterNavigation();
+        if (target.Content is SearchPage search) search.RefreshDisplayStyle();
+        if (target.Content is KeepPage keep) keep.RefreshIfChanged();
+        if (target.Content is HistoryPage history) history.RefreshIfChanged();
+        if (target.Content is CatalogBrowsePage catalog) catalog.RefreshLocalIfChanged();
+        if (target.Content is HomePage home) home.RefreshAfterNavigation();
+        if (target.Content is WorkDetailsPage details) details.RefreshAfterNavigation();
+        SelectNav(tag);
+    }
+
+    Frame FrameFor(string tag) => tag switch
+    {
+        "work-details" => WorkDetailsFrame,
+        "player" => PlaybackFrame,
+        "home" => HomeFrame,
+        "movie" or "tv" or "anime" or "documentary" or "variety" or "all" => CatalogFrame,
+        "live" => LiveFrame,
+        "search" => SearchFrame,
+        "keep" => KeepFrame,
+        "history" => HistoryFrame,
+        "settings" => SettingsFrame,
+        _ => VodFrame,
+    };
+
+    IEnumerable<Frame> SectionFrames()
+    {
+        yield return WorkDetailsFrame;
+        yield return PlaybackFrame;
+        yield return HomeFrame;
+        yield return CatalogFrame;
+        yield return VodFrame;
+        yield return LiveFrame;
+        yield return SearchFrame;
+        yield return KeepFrame;
+        yield return HistoryFrame;
+        yield return SettingsFrame;
+    }
+
+    static void PausePlayback(Frame frame)
+    {
+        frame?.DispatcherQueue.TryEnqueue(UiHints.CloseAll);
+        if (frame?.Content is PlayerPage player) { player.EnterBackground(); return; }
+        if (frame?.Content is INavigationPlayback playback) playback.PauseForNavigation();
+    }
+
+    string _returnSection = "home";
+    public void OpenPlayer(PlayerArgs args)
+    {
+        if (args == null || _closed) return;
+        if (_activeSection != "player") _returnSection = _activeSection;
+        if (!args.ForceReselect && !args.ManualSource && PlaybackFrame.Content is PlayerPage existing && existing.MatchesPlayback(args))
+        { ActivateSection("player", PlaybackFrame, typeof(PlayerPage)); return; }
+        if (PlaybackFrame.Content is PlayerPage old) old.ShutdownPlayback();
+        NowPlayingNav.Visibility = Visibility.Visible; StartPlaybackBadge();
+        ActivateSection("player", PlaybackFrame, typeof(PlayerPage), args);
+        PlaybackFrame.BackStack.Clear();
+    }
+    public void ReturnFromPlayer()
+    {
+        var tag = _returnSection; var frame = FrameFor(tag);
+        ActivateSection(tag, frame, frame.Content?.GetType() ?? typeof(HomePage));
+    }
+
+    void SelectNav(string tag)
+    {
+        if (tag == "settings") { Nav.SelectedItem = Nav.SettingsItem; return; }
+        foreach (var item in Nav.MenuItems.OfType<NavigationViewItem>())
+            if ((item.Tag as string) == tag) { Nav.SelectedItem = item; return; }
+    }
+
+    /// <summary>标题栏全局搜索 → SearchPage（带初始关键词）。</summary>
+    void OnGlobalSearch(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
+    {
+        if (_sourceSetupRequired) return;
+        var keyword = (args.QueryText ?? "").Trim();
+        if (keyword.Length == 0) return;
+        if (FrameFor(_activeSection)?.Content is CatalogBrowsePage catalog) catalog.SearchKeyword(keyword);
+        else ActivateSection("search", SearchFrame, typeof(CatalogBrowsePage), new CatalogNavigation("all", "global", keyword));
+        sender.Text = "";
+    }
+
+    bool _catalogFromDetails;
+    public void OpenCatalog(CatalogNavigation navigation)
+    {
+        if (_activeSection == "work-details") _catalogFromDetails = true;
+        else if (_activeSection == "home") _catalogFromDetails = false;
+        ActivateSection(navigation.Category, CatalogFrame, typeof(CatalogBrowsePage), navigation);
+    }
+    public void ReturnFromCatalog()
+    {
+        if (_catalogFromDetails && WorkDetailsFrame.Content != null) ActivateSection("work-details", WorkDetailsFrame, typeof(WorkDetailsPage));
+        else ActivateSection("home", HomeFrame, typeof(HomePage));
+    }
+    public void OpenMetadataSettings()
+    {
+        ActivateSection("settings", SettingsFrame, typeof(SettingsPage));
+        if (SettingsFrame.Content is SettingsPage settings) settings.FocusMetadataSettings();
+    }
+
+    // ---------- LocalServer 事件接线（契约 §3.1：事件已切 UI 线程） ----------
+
+    void HookServer()
+    {
+        var server = LocalServer.Instance;
+        server.PushArrived += OnServerPush;
+        server.RefreshConfig += OnServerRefreshConfig;
+        server.CastArrived += OnServerCast;
+    }
+
+    void UnhookServer()
+    {
+        var server = LocalServer.Instance;
+        server.PushArrived -= OnServerPush;
+        server.RefreshConfig -= OnServerRefreshConfig;
+        server.CastArrived -= OnServerCast;
+    }
+
+    void OnServerPush(string url)
+    {
+        if (_closed) return;
+        ActivateSection("vod", VodFrame, typeof(VodPage));
+        VodFrame.Navigate(typeof(DetailPage), new DetailArgs { PushUrl = url });
+    }
+
+    void OnServerRefreshConfig(ConfigRecord config)
+    {
+        if (_closed) return;
+        if (config?.Type == 1)
+        {
+            _ = ReloadLiveConfigAsync(config);
+            return;
+        }
+        var target = config ?? (string.IsNullOrEmpty(Setting.ConfigVod) ? null : Stores.FindConfig(Setting.ConfigVod, 0));
+        if (target != null) _ = LoadConfigAsync(target);
+    }
+
+    void OnServerCast(string configUrl, string historyJson)
+    {
+        if (!_closed) _ = HandleCastAsync(configUrl, historyJson);
+    }
+
+    static async Task ReloadLiveConfigAsync(ConfigRecord config)
+    {
+        try { await LiveConfigService.Instance.LoadAsync(config); }
+        catch (Exception e) { Logger.E("LiveConfig", "自动重载失败：" + e.Message); }
+    }
+
+    /// <summary>接收投屏：必要时先切配置，再进详情页播放该历史条目。</summary>
+    async Task HandleCastAsync(string configUrl, string historyJson)
+    {
+        try
+        {
+            var history = JsonUtil.Deserialize<History>(historyJson);
+            if (history == null || string.IsNullOrEmpty(history.Key)) return;
+            if (!string.IsNullOrEmpty(configUrl) && configUrl != VodConfigService.Instance.Config?.Url)
+                await VodConfigService.Instance.LoadAsync(Stores.FindConfig(configUrl, 0));
+            if (_closed) return;
+            ActivateSection("vod", VodFrame, typeof(VodPage));
+            VodFrame.Navigate(typeof(DetailPage), new DetailArgs { SiteKey = history.SiteKey, VodId = history.VodId, Name = history.VodName });
+        }
+        catch (Exception e) { Logger.E("Cast", e.Message); }
+    }
+}
