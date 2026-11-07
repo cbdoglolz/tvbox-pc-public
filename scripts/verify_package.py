@@ -19,6 +19,13 @@ with zipfile.ZipFile(package) as archive:
     assert len([n for n in names if n.endswith("/TVBox.exe")]) == 1, "Duplicate app entry"
     for required in ["TVBox.exe", "libs/TVBox.dll", "libs/e_sqlite3.dll", "libs/Microsoft.Data.Sqlite.dll", "libs/Microsoft.ui.xaml.dll", "libs/Microsoft.UI.Xaml.Phone.dll", "libs/Microsoft.UI.pri", "libs/Microsoft.UI.Xaml.Controls.pri", "libs/zh-CN/Microsoft.ui.xaml.dll.mui", "assets/icons/douban.png", "assets/icons/netflix.svg", "assets/icons/netflix-wordmark.svg", "assets/catalog/default.json", "LICENSE", "README.md", "docs/ACCEPTANCE.md", "docs/UPSTREAM.md", "THIRD-PARTY-NOTICES.md", "ffmpeg/avcodec-62.dll"]:
         assert prefix + required in names, f"Missing {required}"
+    import json
+    provider_root = repo / "windows/TVBox.Windows/Assets/providers"
+    for provider in ["4khdhub.cjs", "anizone.cjs", "vixsrc.cjs", "run-provider.mjs", "provenance.json", "LICENSE"]:
+        assert archive.read(prefix + "assets/providers/" + provider) == (provider_root / provider).read_bytes(), "Stale provider: " + provider
+    for provider in json.loads((provider_root / "provenance.json").read_text()):
+        script = provider_root / (provider["id"][6:] + ".cjs")
+        assert hashlib.sha256(script.read_bytes()).hexdigest() == provider["sha256"], "Provider provenance hash mismatch"
     default = archive.read(prefix + "assets/catalog/default.json")
     assert default == (repo / "windows/TVBox.Windows/Assets/catalog/default.json").read_bytes(), "Stale defaults"
     for document in ["README.md", "docs/ACCEPTANCE.md", "docs/UPSTREAM.md", "docs/PUBLIC-RELEASE.md", "THIRD-PARTY-NOTICES.md"]:

@@ -11,6 +11,9 @@ public class CatalogQuery
     public string ScopeId { get; set; } = "movie";
     public string Category { get; set; } = "movie";
     public string Provider { get; set; } = "douban";
+    public int CompanyId { get; set; }
+    public string CompanyName { get; set; } = "";
+    public bool CompanyIsNetwork { get; set; }
     public int PersonId { get; set; }
     public string PersonName { get; set; } = "";
     public string Keyword { get; set; } = "";
@@ -51,7 +54,7 @@ public class CatalogQuery
     public CatalogQuery Copy() => JsonSerializer.Deserialize<CatalogQuery>(JsonSerializer.Serialize(this));
     public CatalogQuery ClearFilters()
     {
-        var q = new CatalogQuery { Scope = Scope, ScopeId = ScopeId, Category = Category, Provider = Provider, PersonId = PersonId, PersonName = PersonName, Keyword = Keyword, Collection = Collection, RatingProvider = RatingProvider, Sort = Sort, SortDirection = SortDirection, ColumnSort = ColumnSort, SortAscending = SortAscending };
+        var q = new CatalogQuery { Scope = Scope, ScopeId = ScopeId, Category = Category, Provider = Provider, PersonId = PersonId, PersonName = PersonName, CompanyId = CompanyId, CompanyName = CompanyName, CompanyIsNetwork = CompanyIsNetwork, Keyword = Keyword, Collection = Collection, RatingProvider = RatingProvider, Sort = Sort, SortDirection = SortDirection, ColumnSort = ColumnSort, SortAscending = SortAscending };
         return q;
     }
     public void Validate()
@@ -67,6 +70,7 @@ public class CatalogQuery
         var stable = JsonSerializer.Serialize(new { Schema = 5, Scope, ScopeId, Category, Provider, Keyword = Keyword.Trim().Normalize().ToLowerInvariant(), Kind,
             YearFrom, YearTo, IncludeUnknownYear, Countries = Countries.Distinct().Order().ToArray(), Genres = Genres.Distinct().Order().ToArray(), AllGenres,
             RatingProvider, MinimumRating, MinimumVotes, Sort, SortAscending, SortDirection, ColumnSort, Status, AnimeForm, Collection, PageSize, Page = page });
+        if (CompanyId > 0) stable += "|company:" + CompanyId + ":network:" + CompanyIsNetwork;
         if (PersonId > 0) stable += "|person:" + PersonId;
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(stable))).ToLowerInvariant();
     }

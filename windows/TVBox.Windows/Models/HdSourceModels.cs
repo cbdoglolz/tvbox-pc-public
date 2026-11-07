@@ -15,5 +15,5 @@ public interface IHdSourceAdapter
 public static class HdSourceRegistry
 {
     public static IReadOnlyList<IHdSourceAdapter> Adapters { get; } = Array.Empty<IHdSourceAdapter>();
-    public static string Status => "尚未接入高清云端来源。小雅/G-Box适配安排在后续版本；当前普通播放和线路切换可正常使用。";
+    public static string Status => "已接入4KHDHub、AniZone、Vixsrc独立国际适配器；在站点页开关，需要可靠TMDB匹配。当前可用性以媒体检测与实际播放为准，小雅/G-Box/WebDAV尚未接入。";
 }

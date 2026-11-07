@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## TVBox PC 0.8.7 - 2026-11-07
+
+- Consolidate danmaku into adjacent bottom toggle/source controls with live appearance and top-quarter area settings; center readable notices and retain load failures on a yellow warning indicator.
+- Add local site enable/group/add/remove controls and work-season advertisement marks with clean/unknown-first automatic fallback and aggregate statistics.
+- Preserve per-episode viewing state and progress, add Continue Watching removal and drag scrolling, poster image fallbacks, full title copy, and company/network catalog navigation.
+- Add animated sun/moon theme switching, hot-title and ten-entry search history, dismissible suggestions, and return-to-top/previous-position controls.
+- Increase VOD buffering and record stalls; distinguish missing titles from expired media URLs. Add bounded experimental Nuvio adapters, default off because live decoder acceptance is incomplete.
+- Preserve original 32 site keys and all personal data. Full verification and unimplemented cloud integrations are listed in the independent report.
+
 ## TVBox PC 0.8.6 - 2026-11-07
 
 - Add a public stable-release updater with streamed SHA-256 verification, clean extraction, normal exit, file backup and rollback; preserve independent user profiles.

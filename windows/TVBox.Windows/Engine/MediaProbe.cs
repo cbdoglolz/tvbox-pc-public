@@ -8,29 +8,30 @@ namespace TVBoxForWindows.Engine;
 public static class MediaProbe
 {
     public static async Task<bool> CheckAsync(string url, Dictionary<string, string> headers, CancellationToken cancellation,
-        Action<string, int, long> variantSelected = null, bool highQuality = false)
+        Action<string, int, long> variantSelected = null, bool highQuality = false, Action<string> failure = null)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-        timeout.CancelAfter(TimeSpan.FromSeconds(6));
+        timeout.CancelAfter(TimeSpan.FromSeconds(20));
         var ct = timeout.Token;
         var encryptedHls = false;
         for (var depth = 0; depth < 4; depth++)
         {
             if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https")) return false;
+            using var hop = CancellationTokenSource.CreateLinkedTokenSource(ct); hop.CancelAfter(TimeSpan.FromSeconds(8));
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
             foreach (var header in headers ?? new())
                 if (!header.Key.Equals("Range", StringComparison.OrdinalIgnoreCase)) request.Headers.TryAddWithoutValidation(header.Key, header.Value);
             if (!request.Headers.Contains("User-Agent")) request.Headers.TryAddWithoutValidation("User-Agent", "Mozilla/5.0");
             // Servers may ignore ranges. Read a bounded prefix and dispose the response either way.
             request.Headers.TryAddWithoutValidation("Range", "bytes=0-65535");
-            using var response = await HttpUtil.Client(NetworkConfig.GetProxyFor(uri.Host)).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
-            if (!response.IsSuccessStatusCode) return false;
-            await using var stream = await response.Content.ReadAsStreamAsync(ct);
+            using var response = await HttpUtil.Client(NetworkConfig.GetProxyFor(uri.Host)).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, hop.Token);
+            if (!response.IsSuccessStatusCode) { failure?.Invoke("媒体地址返回 HTTP " + (int)response.StatusCode); return false; }
+            await using var stream = await response.Content.ReadAsStreamAsync(hop.Token);
             var bytes = new byte[65536];
             var count = 0;
             while (count < bytes.Length)
             {
-                var read = await stream.ReadAsync(bytes.AsMemory(count), ct);
+                var read = await stream.ReadAsync(bytes.AsMemory(count), hop.Token);
                 if (read == 0) break;
                 count += read;
                 // A TS/MP4 prefix suffices; playlists need a larger prefix for variant selection.
@@ -50,7 +51,7 @@ public static class MediaProbe
                 if (selected != null) variantSelected?.Invoke(url, selected.Height, selected.Bitrate);
                 continue;
             }
-            if (text.StartsWith('<') || text.StartsWith('{')) return false;
+            if (text.StartsWith('<') || text.StartsWith('{')) { failure?.Invoke("返回网页/JSON而非媒体"); return false; }
             // MPEG-TS, common ISO BMFF boxes, or Matroska. Reject disguised HTML/JSON.
             return encryptedHls && count >= 16 || Enumerable.Range(0, Math.Max(0, Math.Min(count - 376, 4096)))
                        .Any(i => bytes[i] == 0x47 && bytes[i + 188] == 0x47 && bytes[i + 376] == 0x47) ||

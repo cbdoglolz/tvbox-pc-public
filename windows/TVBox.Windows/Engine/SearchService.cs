@@ -11,9 +11,9 @@ public class SearchService
         Action<SearchStatus> onStatus = null)
     {
         keyword = Core.Trans.T2S(keyword);
-        var sites = VodConfigService.Instance.Sites.Where(s => !s.IsHidden && (quick ? s.IsQuickSearch : s.IsSearchable)).ToList();
+        var sites = Core.SiteRegistry.Active.Where(s => !s.IsHidden && (quick ? s.IsQuickSearch : s.IsSearchable)).ToList();
         if (sites.Count == 0) return;
-        using var gate = new SemaphoreSlim(3);
+        using var gate = new SemaphoreSlim(10);
         var tasks = sites.Select(site => SearchOne(site, keyword, quick, onSiteResult, gate, ct, onStatus)).ToList();
         try { await Task.WhenAll(tasks); } catch { }
     }
@@ -27,13 +27,13 @@ public class SearchService
         var started = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            if (ct.IsCancellationRequested) return;
+            if (ct.IsCancellationRequested || !Core.SiteRegistry.Enabled(site.Key)) return;
             var result = await SiteService.SearchContent(site, keyword, quick).WaitAsync(TimeSpan.FromMilliseconds(site.RequestTimeout), ct);
-            if (ct.IsCancellationRequested) return;
+            if (ct.IsCancellationRequested || !Core.SiteRegistry.Enabled(site.Key)) return;
             var error = result == null ? "没有返回数据" : result.GetMsg();
             App.Post(() =>
             {
-                if (ct.IsCancellationRequested) return;
+                if (ct.IsCancellationRequested || !Core.SiteRegistry.Enabled(site.Key)) return;
                 if (result?.List.Count > 0) onSiteResult?.Invoke(site, result.List);
                 onStatus?.Invoke(new(site.Name, result?.List.Count ?? 0, error, started.ElapsedMilliseconds));
             });

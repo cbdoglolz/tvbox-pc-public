@@ -11,11 +11,12 @@ public static class CatalogRequestBuilder
     public static CatalogRequest Tmdb(CatalogQuery q, string kind, int page, string country = "")
     {
         var args = new Dictionary<string, string> { ["language"] = "zh-CN", ["include_adult"] = "false", ["page"] = page.ToString() };
-        if (!string.IsNullOrWhiteSpace(q.Keyword))
+        if (!string.IsNullOrWhiteSpace(q.Keyword) && q.CompanyId == 0)
         {
             args["query"] = q.Keyword.Trim();
             return new("search/" + kind, args);
         }
+        if (q.CompanyId > 0) args[q.CompanyIsNetwork && kind == "tv" ? "with_networks" : "with_companies"] = q.CompanyId.ToString();
         args["sort_by"] = q.EffectiveSort switch { "latest" => kind == "movie" ? "primary_release_date.desc" : "first_air_date.desc", "rating" when q.RatingProvider == "tmdb" => "vote_average.desc", "votes" when q.RatingProvider == "tmdb" => "vote_count.desc", "name" => kind == "movie" ? "title.asc" : "name.asc", _ => "popularity.desc" };
         if (q.EffectiveSort == "year") args["sort_by"] = kind == "movie" ? "primary_release_date.desc" : "first_air_date.desc";
         args["sort_by"] = args["sort_by"].Replace(".asc", ".desc");

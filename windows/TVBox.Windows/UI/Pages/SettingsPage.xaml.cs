@@ -17,7 +17,7 @@ namespace TVBoxForWindows.UI.Pages;
 public sealed partial class SettingsPage : Page
 {
     static readonly int[] TimeoutValues = { 5000, 10000, 15000, 30000 };
-    static readonly int[] AreaValues = { 25, 50, 75, 100 };
+    static readonly int[] AreaValues = { 25, 33, 50, 75, 100 };
 
     bool _updating = true; // InitializeComponent 也会触发 Slider.ValueChanged，必须从构造前就抑制
     bool _vodConfigLoading;
@@ -380,6 +380,8 @@ public sealed partial class SettingsPage : Page
     void OnRefreshSourceStatistics(object sender, RoutedEventArgs e) => RefreshSourceStatistics();
     async void RefreshSourceStatistics()
     {
+        var adRows = SourceAdPolicy.Statistics().ToList();
+        AdStatisticsText.Text = adRows.Count == 0 ? "尚未标记；在播放器底部可标记当前来源" : string.Join("\n", adRows.Select(r => $"{r.Name}：😈 有广告 {r.Ads} 次 · 🪽 无广告 {r.Clean} 次"));
         try { var rows = await Task.Run(SourceLearning.Statistics); SourceStatisticsText.Text = rows.Count == 0 ? "尚无实际播放统计" : string.Join("\n\n", rows.OrderByDescending(r => r.Wins).ThenBy(r => r.Name).Select(r => r.Summary)); }
         catch { SourceStatisticsText.Text = "统计暂不可读，原文件保留"; }
     }
@@ -676,13 +678,13 @@ static class UiSetting
     public static int DanmakuSpeed
     {
         get => Setting.GetInt("danmaku_speed", 2);
-        set => Setting.Put("danmaku_speed", value);
+        set { Setting.Put("danmaku_speed", value); Setting.Put("danmaku_speed_factor", value == 1 ? 0.75 : value == 3 ? 1.5 : 1); }
     }
 
     /// <summary>弹幕显示区域（屏幕百分比 25/50/75/100），键 "danmaku_area"。</summary>
     public static int DanmakuArea
     {
-        get => Setting.GetInt("danmaku_area", 50);
+        get => Setting.GetInt("danmaku_area", 25);
         set => Setting.Put("danmaku_area", value);
     }
 }

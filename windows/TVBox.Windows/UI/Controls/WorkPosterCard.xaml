@@ -9,6 +9,7 @@
             <Button x:Name="PlayButton" Click="OnPlay" Padding="0" BorderThickness="0" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" ToolTipService.ToolTip="查看剧情、人物与片源详情">
                 <controls:PosterImage Work="{Binding}"/>
             </Button>
+            <Border x:Name="WatchBadge" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="6" Background="#D8111026" CornerRadius="12" Padding="5,2" Visibility="Collapsed"><TextBlock x:Name="WatchIcon" Text="&#xE890;" FontFamily="Segoe Fluent Icons" FontSize="18" Foreground="#C599FF"/></Border>
             <StackPanel x:Name="Actions" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top" Spacing="4" Margin="5" Opacity="0.85">
                 <Button x:Name="Favorite" Content="☆" Click="OnFavorite" Padding="6,2" MinWidth="28" ToolTipService.ToolTip="收藏 / 取消收藏"/>
             </StackPanel>

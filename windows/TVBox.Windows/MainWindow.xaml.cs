@@ -73,7 +73,7 @@ public sealed partial class MainWindow : Window
         ApplyDiscoveryTheme();
         ThemeManager.Changed += ApplyDiscoveryTheme;
         var searchKey = new Microsoft.UI.Xaml.Input.KeyboardAccelerator { Key = Windows.System.VirtualKey.K, Modifiers = Windows.System.VirtualKeyModifiers.Control };
-        searchKey.Invoked += (_, e) => { GlobalSearch.Focus(FocusState.Keyboard); e.Handled = true; };
+        searchKey.Invoked += (_, e) => { _searchSuggestionsAllowed = true; GlobalSearch.Focus(FocusState.Keyboard); e.Handled = true; };
         RootGrid.KeyboardAccelerators.Add(searchKey);
         RootGrid.SizeChanged += (_, _) => ApplyNavigationPaneState();
         foreach (var section in SectionFrames().Where(f => f != PlaybackFrame))
@@ -98,6 +98,8 @@ public sealed partial class MainWindow : Window
         TitleBarArea.Loaded += OnTitleBarAreaLoaded;
         TitleBarArea.SizeChanged += OnTitleBarAreaSizeChanged;
         GlobalSearch.SizeChanged += OnTitleBarAreaSizeChanged;
+        GlobalSearch.KeyDown += (_, e) => { if (e.Key == Windows.System.VirtualKey.Escape) { _suppressSearchUntil = Environment.TickCount64 + 700; GlobalSearch.IsSuggestionListOpen = false; } };
+        GlobalSearch.AddHandler(UIElement.PointerPressedEvent, new Microsoft.UI.Xaml.Input.PointerEventHandler((_, e) => { var point = e.GetCurrentPoint(GlobalSearch).Position; if (point.Y >= 0 && point.Y <= GlobalSearch.ActualHeight && Environment.TickCount64 >= _suppressSearchUntil) { _searchSuggestionsAllowed = true; RefreshSearchSuggestions(); } }), true);
         // 设置任务栏 / Alt-Tab 图标。
         var iconPath = System.IO.Path.Combine(AppPaths.IconDir, "icon.ico");
         try
@@ -150,7 +152,7 @@ public sealed partial class MainWindow : Window
     {
         ActionNotice.Message = message; ActionNotice.IsOpen = true;
         _noticeTimer ??= DispatcherQueue.CreateTimer(); _noticeTimer.Stop();
-        _noticeTimer.Interval = TimeSpan.FromSeconds(2.5); _noticeTimer.IsRepeating = false;
+        _noticeTimer.Interval = TimeSpan.FromSeconds(8); _noticeTimer.IsRepeating = false;
         _noticeTimer.Tick -= CloseNotice; _noticeTimer.Tick += CloseNotice; _noticeTimer.Start();
     }
     void CloseNotice(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args) => ActionNotice.IsOpen = false;
@@ -160,6 +162,7 @@ public sealed partial class MainWindow : Window
         if (_closed) return;
         RootGrid.RequestedTheme = ThemeManager.Theme;
         var dark = ThemeManager.Theme == ElementTheme.Dark;
+        ThemeOrbitIcon.SetDark(dark);
         ToolTipService.SetToolTip(ThemeButton, dark ? "切换为豆瓣纯白主题" : "切换为奈飞蓝黑紫主题");
         var bar = AppWindow.TitleBar;
         bar.ButtonForegroundColor = dark ? Colors.White : Colors.Black;
@@ -261,6 +264,8 @@ public sealed partial class MainWindow : Window
             GlobalSearch.ActualWidth <= 0 || GlobalSearch.ActualHeight <= 0) return;
         try
         {
+            var searchLeft = GlobalSearch.TransformToVisual(SearchContainer).TransformPoint(new Windows.Foundation.Point(0, 0)).X;
+            ClearSearchButton.Margin = new(Math.Max(0, searchLeft - 37), 0, 0, 0); ClearSearchButton.UpdateLayout();
             var bounds = GlobalSearch.TransformToVisual(null).TransformBounds(
                 new Windows.Foundation.Rect(0, 0, GlobalSearch.ActualWidth, GlobalSearch.ActualHeight));
             var scale = GlobalSearch.XamlRoot.RasterizationScale;
@@ -274,7 +279,7 @@ public sealed partial class MainWindow : Window
                 Math.Max(1, right - left),
                 Math.Max(1, bottom - top));
             _titleBarInput ??= InputNonClientPointerSource.GetForWindowId(AppWindow.Id);
-            _titleBarInput.SetRegionRects(NonClientRegionKind.Passthrough, [rect, ThemeButtonBounds()]);
+            _titleBarInput.SetRegionRects(NonClientRegionKind.Passthrough, [rect, ThemeButtonBounds(), SearchClearBounds()]);
         }
         catch (Exception e)
         {
@@ -282,6 +287,11 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    RectInt32 SearchClearBounds()
+    {
+        var bounds = ClearSearchButton.TransformToVisual(null).TransformBounds(new Windows.Foundation.Rect(0, 0, ClearSearchButton.ActualWidth, ClearSearchButton.ActualHeight));
+        var scale = ClearSearchButton.XamlRoot.RasterizationScale; return new((int)(bounds.X * scale), (int)(bounds.Y * scale), Math.Max(1, (int)(bounds.Width * scale)), Math.Max(1, (int)(bounds.Height * scale)));
+    }
     RectInt32 ThemeButtonBounds()
     {
         var b = ThemeButton.TransformToVisual(null).TransformBounds(new Windows.Foundation.Rect(0, 0, ThemeButton.ActualWidth, ThemeButton.ActualHeight));
@@ -682,7 +692,7 @@ public sealed partial class MainWindow : Window
             Nav.InvalidateArrange();
             PageHost.InvalidateMeasure();
             PageHost.InvalidateArrange();
-            foreach (var item in Nav.MenuItems.OfType<NavigationViewItem>())
+            foreach (var item in Nav.MenuItems.Concat(Nav.FooterMenuItems).OfType<NavigationViewItem>())
             {
                 item.InvalidateMeasure();
                 item.InvalidateArrange();
@@ -936,6 +946,7 @@ public sealed partial class MainWindow : Window
         }
         var tag = args.InvokedItemContainer?.Tag as string;
         Logger.D("UiNavigation", tag ?? "settings");
+        if (tag == "sites") { ActivateSection("sites", SitesFrame, typeof(SitesPage)); return; }
         if (tag == "player") { ActivateSection("player", PlaybackFrame, typeof(PlayerPage)); return; }
         if (tag is "movie" or "tv" or "anime" or "documentary" or "variety")
         {
@@ -1007,6 +1018,7 @@ public sealed partial class MainWindow : Window
         "keep" => KeepFrame,
         "history" => HistoryFrame,
         "settings" => SettingsFrame,
+        "sites" => SitesFrame,
         _ => VodFrame,
     };
 
@@ -1022,6 +1034,7 @@ public sealed partial class MainWindow : Window
         yield return KeepFrame;
         yield return HistoryFrame;
         yield return SettingsFrame;
+        yield return SitesFrame;
     }
 
     static void PausePlayback(Frame frame)
@@ -1036,7 +1049,7 @@ public sealed partial class MainWindow : Window
     {
         if (args == null || _closed) return;
         if (_activeSection != "player") _returnSection = _activeSection;
-        if (!args.ForceReselect && !args.ManualSource && PlaybackFrame.Content is PlayerPage existing && existing.MatchesPlayback(args))
+        if (!args.StartOver && !args.ForceReselect && !args.ManualSource && PlaybackFrame.Content is PlayerPage existing && existing.MatchesPlayback(args))
         { ActivateSection("player", PlaybackFrame, typeof(PlayerPage)); return; }
         if (PlaybackFrame.Content is PlayerPage old) old.ShutdownPlayback();
         NowPlayingNav.Visibility = Visibility.Visible; StartPlaybackBadge();
@@ -1052,19 +1065,51 @@ public sealed partial class MainWindow : Window
     void SelectNav(string tag)
     {
         if (tag == "settings") { Nav.SelectedItem = Nav.SettingsItem; return; }
-        foreach (var item in Nav.MenuItems.OfType<NavigationViewItem>())
+        foreach (var item in Nav.MenuItems.Concat(Nav.FooterMenuItems).OfType<NavigationViewItem>())
             if ((item.Tag as string) == tag) { Nav.SelectedItem = item; return; }
     }
 
     /// <summary>标题栏全局搜索 → SearchPage（带初始关键词）。</summary>
+    List<string> _searchHot = new();
+    bool _hotLoading;
+    long _suppressSearchUntil;
+    bool _searchSuggestionsAllowed;
+    async void OnGlobalSearchFocus(object sender, RoutedEventArgs e)
+    {
+        if (Environment.TickCount64 < _suppressSearchUntil || Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(GlobalSearch.XamlRoot) is not TextBox) return;
+        _searchSuggestionsAllowed = true;
+        RefreshSearchSuggestions();
+        if (_hotLoading || _searchHot.Count > 0) return; _hotLoading = true;
+        try { using var ct = new CancellationTokenSource(TimeSpan.FromSeconds(12)); var page = await CatalogFeedService.GetAsync("tv", 1, false, ct.Token); _searchHot = page.Items.Select(w => w.Title).Distinct().Take(6).ToList(); if (GlobalSearch.FocusState != FocusState.Unfocused) RefreshSearchSuggestions(); } catch { } finally { _hotLoading = false; }
+    }
+    void OnGlobalSearchTextChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs e) { if (e.Reason == AutoSuggestionBoxTextChangeReason.UserInput && Environment.TickCount64 >= _suppressSearchUntil) { _searchSuggestionsAllowed = true; RefreshSearchSuggestions(); } }
+    public void RefreshSearchSuggestions()
+    {
+        if (!_searchSuggestionsAllowed || Environment.TickCount64 < _suppressSearchUntil) { GlobalSearch.IsSuggestionListOpen = false; return; }
+        var query = GlobalSearch.Text.Trim(); var suggestions = new List<UI.Controls.GlobalSuggestion>();
+        var hot = _searchHot.Count > 0 ? _searchHot : HomeFrame.Content is HomePage home ? home.SuggestionTitles.Take(6).ToList() : new();
+        if (query.Length == 0 && hot.Count > 0) suggestions.Add(new("", hot));
+        suggestions.AddRange(SearchHistory.Items.Where(q => query.Length == 0 || q.Contains(query, StringComparison.OrdinalIgnoreCase)).Select(q => new UI.Controls.GlobalSuggestion(q)));
+        GlobalSearch.ItemsSource = suggestions; GlobalSearch.IsSuggestionListOpen = suggestions.Count > 0;
+    }
+    async void OnClearSearch(object sender, RoutedEventArgs e)
+    {
+        var dialog = new ContentDialog { RequestedTheme = RootGrid.ActualTheme, XamlRoot = RootGrid.XamlRoot, Title = "清空搜索记录？", Content = "删除最近10条搜索记录，热门推荐不受影响。", PrimaryButtonText = "清空", CloseButtonText = "取消" };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary) { SearchHistory.Clear(); RefreshSearchSuggestions(); }
+    }
     void OnGlobalSearch(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs args)
     {
-        if (_sourceSetupRequired) return;
-        var keyword = (args.QueryText ?? "").Trim();
-        if (keyword.Length == 0) return;
+        if (args.ChosenSuggestion is UI.Controls.GlobalSuggestion suggestion && suggestion.Hot != null) return;
+        SubmitGlobalSearch(args.ChosenSuggestion is UI.Controls.GlobalSuggestion chosen ? chosen.Query : args.QueryText);
+    }
+    public void SubmitGlobalSearch(string text)
+    {
+        if (_sourceSetupRequired) return; var keyword = (text ?? "").Trim(); if (keyword.Length == 0) return;
+        SearchHistory.Add(keyword); _searchSuggestionsAllowed = false; _suppressSearchUntil = Environment.TickCount64 + 700; GlobalSearch.IsSuggestionListOpen = false;
         if (FrameFor(_activeSection)?.Content is CatalogBrowsePage catalog) catalog.SearchKeyword(keyword);
         else ActivateSection("search", SearchFrame, typeof(CatalogBrowsePage), new CatalogNavigation("all", "global", keyword));
-        sender.Text = "";
+        GlobalSearch.Text = "";
+        DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => { GlobalSearch.IsSuggestionListOpen = false; GlobalSearch.ItemsSource = null; Nav.Focus(FocusState.Programmatic); });
     }
 
     bool _catalogFromDetails;

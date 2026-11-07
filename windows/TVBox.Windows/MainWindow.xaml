@@ -51,23 +51,27 @@
                 <Image x:Name="BrandIcon" Width="30" Height="30" Stretch="Uniform"/>
                 <TextBlock x:Name="BrandName" Text="TVBox PC" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
             </StackPanel>
-            <Grid Grid.Column="1">
+            <Grid x:Name="SearchContainer" Grid.Column="1">
                 <Border x:Name="DragRegion" Background="Transparent"/>
+                <Button x:Name="ClearSearchButton" Click="OnClearSearch" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="0" Padding="5" ToolTipService.ToolTip="清空最近10条搜索记录"><SymbolIcon Symbol="Delete"/></Button>
                 <AutoSuggestBox x:Name="GlobalSearch"
                                 Width="440"
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
                                 QueryIcon="Find"
                                 PlaceholderText="搜索影视作品  ·  Ctrl+K"
-                                QuerySubmitted="OnGlobalSearch"/>
+                                GotFocus="OnGlobalSearchFocus" TextChanged="OnGlobalSearchTextChanged"
+                                QuerySubmitted="OnGlobalSearch">
+                    <AutoSuggestBox.ItemTemplate><DataTemplate><controls:SearchSuggestionRow/></DataTemplate></AutoSuggestBox.ItemTemplate>
+                </AutoSuggestBox>
             </Grid>
             <Button x:Name="ThemeButton" Click="OnToggleTheme" Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Center" Padding="7" ToolTipService.ToolTip="切换主题" AutomationProperties.Name="切换主题">
-                <Button.Content><PathIcon Width="20" Height="20" Data="M7,2 L3,4 1,9 5,11 6,9 6,19 18,19 18,9 19,11 23,9 21,4 17,2 C16,7 8,7 7,2 Z"/></Button.Content>
+                <Button.Content><controls:ThemeOrbit x:Name="ThemeOrbitIcon"/></Button.Content>
 
             </Button>
         </Grid>
 
-        <InfoBar x:Name="ActionNotice" Grid.Row="1" Canvas.ZIndex="30" IsOpen="False" Severity="Success" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="12" MaxWidth="420"/>
+        <InfoBar x:Name="ActionNotice" Grid.Row="1" Canvas.ZIndex="30" IsOpen="False" Severity="Success" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24" MaxWidth="660"/>
         <!-- 导航 + 内容 -->
         <NavigationView x:Name="Nav"
                         Grid.Row="1"
@@ -133,6 +137,7 @@
                 </NavigationViewItem>
             </NavigationView.MenuItems>
             <NavigationView.FooterMenuItems>
+                <NavigationViewItem Content="站点" Tag="sites"><NavigationViewItem.Icon><SymbolIcon Symbol="Globe"/></NavigationViewItem.Icon></NavigationViewItem>
                 <NavigationViewItem SelectsOnInvoked="False" IsHitTestVisible="False" IsTabStop="False">
                     <NavigationViewItem.Content><StackPanel Spacing="3"><TextBlock x:Name="VersionLabel" FontSize="12"/><TextBlock x:Name="ReleaseDateLabel" FontSize="11" Opacity="0.65"/></StackPanel></NavigationViewItem.Content>
                 </NavigationViewItem>
@@ -148,7 +153,7 @@
                 <Frame x:Name="SearchFrame" Visibility="Collapsed"/>
                 <Frame x:Name="KeepFrame" Visibility="Collapsed"/>
                 <Frame x:Name="HistoryFrame" Visibility="Collapsed"/>
-                <Frame x:Name="SettingsFrame" Visibility="Collapsed"/>
+                <Frame x:Name="SettingsFrame" Visibility="Collapsed"/><Frame x:Name="SitesFrame" Visibility="Collapsed"/>
 
                 <!-- 配置公告 -->
                 <InfoBar x:Name="NoticeBar"

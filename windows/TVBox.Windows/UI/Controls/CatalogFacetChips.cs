@@ -19,6 +19,7 @@ public sealed class CatalogFacetChips : UserControl
             button.Click += (_, _) => { var q = query.Copy(); remove(q); DispatcherQueue.TryEnqueue(() => Changed?.Invoke(q)); };
             _row.Children.Add(button);
         }
+        if (query.CompanyId > 0) Add((query.CompanyIsNetwork ? "播出：" : "出品：") + query.CompanyName, q => { q.CompanyId = 0; q.CompanyName = ""; q.CompanyIsNetwork = false; });
         if (query.PersonId > 0) Add("演员：" + query.PersonName, q => { q.PersonId = 0; q.PersonName = ""; });
         if (query.Keyword.Length > 0) Add("片名：" + query.Keyword, q => q.Keyword = "");
         foreach (var c in query.Countries) Add("地区：" + CatalogVocabulary.Label(c), q => q.Countries.Remove(c));

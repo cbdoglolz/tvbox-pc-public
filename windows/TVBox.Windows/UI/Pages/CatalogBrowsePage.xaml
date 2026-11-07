@@ -52,6 +52,7 @@
         </StackPanel>
         <Grid Grid.Row="4">
             <GridView x:Name="PosterWall" ItemTemplate="{StaticResource WorkCard}" SelectionMode="None" IsItemClickEnabled="False" ItemClick="OnPosterClick"/>
+            <controls:ScrollReturnButtons x:Name="ReturnButtons"/>
             <TextBlock x:Name="EmptyText" Text="正在查询…" TextWrapping="Wrap" MaxWidth="520" VerticalAlignment="Center" HorizontalAlignment="Center"/>
         </Grid>
         <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Center" Spacing="10">

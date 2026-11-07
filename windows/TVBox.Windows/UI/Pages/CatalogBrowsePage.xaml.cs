@@ -51,7 +51,7 @@ public sealed partial class CatalogBrowsePage : Page
         var query = _root.Preset?.Copy() ?? _queries.LastQuery(_root.Scope, _root.Category);
         if (_root.Keyword.Length > 0) query.Keyword = _root.Keyword;
         SetControls(query);
-        PageTitle.Text = query.PersonId > 0 ? query.PersonName + " · 参演作品" : _root.Scope == "collection" ? CollectionHeading(query) : CategoryName(_root.Category, _root.Scope);
+        PageTitle.Text = query.CompanyId > 0 ? query.CompanyName + (query.CompanyIsNetwork ? " · 播出作品" : " · 出品 / 参与作品") : query.PersonId > 0 ? query.PersonName + " · 参演作品" : _root.Scope == "collection" ? CollectionHeading(query) : CategoryName(_root.Category, _root.Scope);
         ProviderCombo.Visibility = Local ? Visibility.Collapsed : Visibility.Visible;
         SearchScopeCombo.IsEnabled = !Local;
         ClearHistoryButton.Visibility = _root.Scope == "history" ? Visibility.Visible : Visibility.Collapsed;
@@ -77,7 +77,7 @@ public sealed partial class CatalogBrowsePage : Page
     public static string CategoryName(string category, string scope = "category") => scope switch { "favorites" => "收藏", "history" => "观看历史", "global" => "搜索影视", _ => category switch { "movie" => "电影", "tv" => "电视剧", "anime" => "动漫", "documentary" => "纪录片", "variety" => "综艺", _ => "影视目录" } };
     void SetControls(CatalogQuery q)
     {
-        _updating = true; ProviderCombo.IsEnabled = q.PersonId == 0; KeywordBox.Text = q.Keyword; Filters.SetQuery(q); ProviderCombo.SelectedIndex = q.Provider == "tmdb" ? 1 : 0; SearchScopeCombo.SelectedIndex = q.Scope == "global" ? 1 : 0; _updating = false;
+        _updating = true; ProviderCombo.IsEnabled = q.PersonId == 0 && q.CompanyId == 0; KeywordBox.Text = q.Keyword; Filters.SetQuery(q); ProviderCombo.SelectedIndex = q.Provider == "tmdb" ? 1 : 0; SearchScopeCombo.SelectedIndex = q.Scope == "global" ? 1 : 0; _updating = false;
     }
     void Hint(bool userRequested) { if (OptionalMetadataHint.TryMarkShown(userRequested)) OptionalHint.IsOpen = true; }
     void OnNeverHint(object sender, RoutedEventArgs e) { OptionalMetadataHint.DismissForever(); OptionalHint.IsOpen = false; }
@@ -94,12 +94,12 @@ public sealed partial class CatalogBrowsePage : Page
         q.Scope = SearchScopeCombo.SelectedIndex == 1 ? "global" : _root.Scope;
         q.Category = SearchScopeCombo.SelectedIndex == 1 ? "all" : _root.Category;
         q.Collection = SearchScopeCombo.SelectedIndex == 1 ? "" : _root.Preset?.Collection ?? "";
-        if (SearchScopeCombo.SelectedIndex == 1) { q.PersonId = 0; q.PersonName = ""; }
+        if (SearchScopeCombo.SelectedIndex == 1) { q.PersonId = 0; q.PersonName = ""; q.CompanyId = 0; q.CompanyName = ""; }
         Apply(q);
     }
     void OnKeywordChanged(AutoSuggestBox sender, AutoSuggestBoxTextChangedEventArgs e)
     { if (!_updating && e.Reason == AutoSuggestionBoxTextChangeReason.UserInput) { _debounce.Stop(); _debounce.Start(); } }
-    void OnSearchSubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs e) { _debounce.Stop(); ApplyInput(); }
+    void OnSearchSubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs e) { SearchHistory.Add(sender.Text); _debounce.Stop(); ApplyInput(); }
     public void SearchKeyword(string keyword) { _updating = true; KeywordBox.Text = keyword; _updating = false; ApplyInput(); }
     void ApplyInput() { if (_state == null || _closed) return; var q = Filters.CurrentQuery(); q.Keyword = KeywordBox.Text ?? ""; q.Provider = ProviderCombo.SelectedIndex == 1 ? "tmdb" : "douban"; Apply(q); }
     void OnRefresh(object sender, RoutedEventArgs e) { if (_state != null) Apply(_state.Query, true); }
@@ -136,7 +136,7 @@ public sealed partial class CatalogBrowsePage : Page
         if (query.Provider == "tmdb" && !TmdbCredentials.HasCredential && !Local)
         { query.Provider = "douban"; App.Main.ShowNotice("TMDB目录需个人Key；当前显示豆瓣目录。普通点播不受影响。"); }
         SetControls(query); PosterWall.IsEnabled = true;
-        if (_root.Scope == "person") PageTitle.Text = query.PersonId > 0 ? query.PersonName + " · 参演作品" : "全部影视";
+        if (_root.Scope == "person") PageTitle.Text = query.CompanyId > 0 ? query.CompanyName + (query.CompanyIsNetwork ? " · 播出作品" : " · 出品 / 参与作品") : query.PersonId > 0 ? query.PersonName + " · 参演作品" : "全部影视";
         var previousScope = _state?.Query.ScopeId;
         _state = refresh ? new() { Query = query.Copy() } : _queries.Restore(query);
         if (previousScope != _state.Query.ScopeId) LoadPresets();
@@ -254,7 +254,7 @@ public sealed partial class CatalogBrowsePage : Page
             return null;
         }
         var scroll = Find(PosterWall); if (scroll == null) return;
-        if (_scroll != scroll) { if (_scroll != null) _scroll.ViewChanged -= OnViewChanged; _scroll = scroll; _scroll.ViewChanged += OnViewChanged; }
+        if (_scroll != scroll) { if (_scroll != null) _scroll.ViewChanged -= OnViewChanged; _scroll = scroll; _scroll.ViewChanged += OnViewChanged; ReturnButtons.Attach(_scroll, () => _wheelArmed = false); }
         RestorePosition();
     }
     void OnWheel(object sender, PointerRoutedEventArgs e) { if (e.GetCurrentPoint(PosterWall).Properties.MouseWheelDelta < 0) { _wheelArmed = true; DispatcherQueue.TryEnqueue(TryMore); } }

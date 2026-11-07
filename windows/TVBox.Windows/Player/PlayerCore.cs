@@ -144,6 +144,9 @@ public partial class PlayerCore : IDisposable
             var config = new Config();
             config.Player.AutoPlay = true;
             config.Player.Stats = true;
+            // Flyleaf defaults to just 0.5 seconds, too little for bursty remote VOD segments.
+            config.Player.MinBufferDuration = TimeSpan.FromMilliseconds(Math.Clamp(Setting.GetInt("play_min_buffer_ms", 3000), 500, 15000)).Ticks;
+            config.Demuxer.BufferDuration = TimeSpan.FromSeconds(30).Ticks;
             // Keyframe seeking keeps repeated jumps responsive on remote HLS/HTTP media.
             config.Player.SeekAccurate = false;
             config.Demuxer.OpenTimeout = TimeSpan.FromMilliseconds(Math.Max(Setting.PlayTimeout, 15000)).Ticks;
@@ -292,6 +295,7 @@ public partial class PlayerCore : IDisposable
         }
         lock (_subtitleLock) _subtitlePending = null;
         var request = Snapshot(item);
+        if (Fly != null) Fly.Config.Player.MinBufferDuration = TimeSpan.FromMilliseconds(request.IsLive ? 500 : Math.Clamp(Setting.GetInt("play_min_buffer_ms", 3000), 500, 15000)).Ticks;
         var previousTimeline = _item?.Url == request.Url ? _timeline.Snapshot() : null;
         var generation = Interlocked.Increment(ref _openGeneration);
         ResetSeekRequests();

@@ -19,7 +19,7 @@ public sealed partial class PlayerPage
     async void OnHdSource(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         if (_menuOpen > 0) return; _menuOpen++; ShowControls();
-        try { await new Microsoft.UI.Xaml.Controls.ContentDialog { XamlRoot = XamlRoot, Title = "高清源搜索", Content = HdSourceRegistry.Status, CloseButtonText = "返回播放" }.ShowAsync(); }
+        try { OnRetryDiscovery(sender, e); await Task.CompletedTask; }
         finally { _menuOpen = Math.Max(0, _menuOpen - 1); if (!_closed) ShowControls(); }
     }
     CancellationTokenSource _discoveryCts;
@@ -70,7 +70,9 @@ public sealed partial class PlayerPage
             };
             _requestedEpisode = string.IsNullOrEmpty(args.EpisodeName) ? history.VodRemarks : args.EpisodeName;
             item.IdentityKey = history.Key;
-            _resumeAnchorMs = TitleMatchRules.ResumePosition(history.VodRemarks, _requestedEpisode, item.Kind, history.Position);
+            var episodeProgress = ViewingState.Get(item, item.SelectedSeason ?? Math.Max(1, CatalogIdentity.Season(item)), item.Kind == "tv" ? EpisodeIdentity.Parse(_requestedEpisode).Number : null);
+            _resumeAnchorMs = args.StartOver ? 0 : episodeProgress.Position > 0 ? episodeProgress.Position : TitleMatchRules.ResumePosition(history.VodRemarks, _requestedEpisode, item.Kind, history.Position);
+            ViewingState.Unhide(history);
             _resumePending = _resumeAnchorMs > 5000;
             if (!string.IsNullOrEmpty(item.Kind)) history.CatalogKind = item.Kind;
             if (!string.IsNullOrEmpty(item.Year)) history.CatalogYear = item.Year;
@@ -87,6 +89,7 @@ public sealed partial class PlayerPage
             var cts = _discoveryCts = new CancellationTokenSource();
             ShowLoading("正在并发检测播放源（最多10站）…", false);
             _resumeSiteKey = args.ManualSource ? args.SeedSiteKey : args.ForceReselect ? "" : string.IsNullOrEmpty(history.SourceKey) ? args.SeedSiteKey : history.SourceKey;
+            if (!args.ManualSource && SourceAdPolicy.Get(item, _resumeSiteKey) == AdMark.Ads) _resumeSiteKey = "";
             if (!string.IsNullOrEmpty(_resumeSiteKey))
             {
                 Logger.D(TAG, "续播优先检测上次来源：" + _resumeSiteKey);
@@ -164,7 +167,7 @@ public sealed partial class PlayerPage
     bool TryNextCandidate()
     {
         var name = _catalogStarted ? _session.CurrentEpisode?.Name : _requestedEpisode;
-        foreach (var index in PlaybackPresentation.OrderFlags(_session.Flags, Setting.SourcePreference == "quality"))
+        foreach (var index in PlaybackPresentation.OrderFlags(_session.Flags, Setting.SourcePreference == "quality").OrderBy(i => SourceAdPolicy.Rank(_session.Catalog, _session.Flags[i].SourceSite?.Key)))
         {
             if (_triedFlags.Contains(index)) continue;
             var flag = _session.Flags[index];
@@ -205,10 +208,11 @@ public sealed partial class PlayerPage
 
     void UpdateDiscoveryText()
     {
-        var total = VodConfigService.Instance.Sites.Count(s => s.IsSearchable && !s.IsHidden);
+        var total = SiteRegistry.Active.Count(s => (s.IsSearchable || s.Type == InternationalSources.SiteType) && !s.IsHidden);
         var current = _catalogStarted ? $"当前：{_session.CurrentSite?.Name} · " : "";
         var verified = _session.Flags.Count(f => f.IsMediaVerified);
         DiscoveryStatusText.Text = $"{current}已检查 {_sourceStatuses.Count}/{total} · {verified} 个媒体检测通过";
+        RefreshAdMark();
         var latency = _session.CurrentFlag?.ProbeLatencyMs;
         SourceLatencyText.Text = "探测 " + PlaybackPresentation.Delay(latency);
         SourceLatencyText.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(ColorFromHex(PlaybackPresentation.DelayColor(latency)));
@@ -222,20 +226,35 @@ public sealed partial class PlayerPage
         {
             foreach (var candidate in _refreshedCandidates.OrderByDescending(c => Setting.SourcePreference == "quality" ? c.Flag.ProbeHeight : 0).ThenBy(c => c.Flag.ProbeLatencyMs ?? long.MaxValue))
                 items.Add(new(candidate.Flag.Flag + (candidate.Flag.ProbeHeight > 0 ? $" · {candidate.Flag.ProbeHeight}p" : " · 画质待解码确认"), candidate, false)
-                { Detail = PlaybackPresentation.Delay(candidate.Flag.ProbeLatencyMs), DetailColor = PlaybackPresentation.DelayColor(candidate.Flag.ProbeLatencyMs) });
+                { AdStatus = SourceAdPolicy.Get(_session.Catalog, candidate.Site.Key), AdSiteKey = candidate.Site.Key, AdLabel = SourceAdPolicy.Label(SourceAdPolicy.Get(_session.Catalog, candidate.Site.Key)), Detail = PlaybackPresentation.Delay(candidate.Flag.ProbeLatencyMs), DetailColor = PlaybackPresentation.DelayColor(candidate.Flag.ProbeLatencyMs) });
             return items;
         }
-        foreach (var index in PlaybackPresentation.OrderFlags(_session.Flags, Setting.SourcePreference == "quality"))
+        foreach (var index in PlaybackPresentation.OrderFlags(_session.Flags, Setting.SourcePreference == "quality").OrderBy(i => SourceAdPolicy.Rank(_session.Catalog, _session.Flags[i].SourceSite?.Key)))
         {
             var flag = _session.Flags[index];
             var quality = flag.ProbeHeight > 0 ? $" · 清单 {flag.ProbeHeight}p" : "";
             items.Add(new(flag.Flag + quality, index, index == _session.FlagIndex)
-            { Detail = PlaybackPresentation.Delay(flag.ProbeLatencyMs), DetailColor = PlaybackPresentation.DelayColor(flag.ProbeLatencyMs) });
+            { AdStatus = SourceAdPolicy.Get(_session.Catalog, flag.SourceSite?.Key), AdSiteKey = flag.SourceSite?.Key ?? "", AdLabel = SourceAdPolicy.Label(SourceAdPolicy.Get(_session.Catalog, flag.SourceSite?.Key)), Detail = PlaybackPresentation.Delay(flag.ProbeLatencyMs), DetailColor = PlaybackPresentation.DelayColor(flag.ProbeLatencyMs) });
         }
         foreach (var status in _sourceStatuses.Values.Where(s => !_session.Flags.Any(f => f.SourceSite?.Key == s.SourceKey)))
             items.Add(new(status.SourceName + " · " + status.Message, -1, false)
-            { Detail = status.NoMatch ? "NA" : "ERR", DetailColor = status.NoMatch ? "#FFAAAAAA" : "#FFFF7272" });
+            { AdStatus = SourceAdPolicy.Get(_session.Catalog, status.SourceKey), AdSiteKey = status.SourceKey, AdLabel = SourceAdPolicy.Label(SourceAdPolicy.Get(_session.Catalog, status.SourceKey)), Detail = status.NoMatch ? "NA" : "ERR", DetailColor = status.NoMatch ? "#FFAAAAAA" : "#FFFF7272" });
         return items;
+    }
+
+    void RefreshAdMark()
+    {
+        if (_session == null) return;
+        CurrentAdMark.Work = _session.Catalog ?? CatalogLibrary.FromHistory(_session.History);
+        CurrentAdMark.Site = _session.CurrentSite; CurrentAdMark.Refresh();
+    }
+    void OnMarkSourceRow(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button || button.Tag is not string key) return;
+        var site = SiteRegistry.All.FirstOrDefault(s => s.Key == key); if (site == null) return;
+        var menu = new MenuFlyout();
+        foreach (var mark in Enum.GetValues<AdMark>()) { var item = new MenuFlyoutItem { Text = SourceAdPolicy.Label(mark) }; item.Click += (_, _) => { SourceAdPolicy.Set(_session.Catalog, site, mark); RefreshAdMark(); QueueSelectionMutation(RefreshSelectionPanel); ShowToast("已标记“" + site.Name + "”：" + SourceAdPolicy.Label(mark) + "，应用到本片本季"); }; menu.Items.Add(item); }
+        menu.ShowAt(button);
     }
 
     static Windows.UI.Color ColorFromHex(string hex) => Windows.UI.Color.FromArgb(255,
@@ -343,6 +362,22 @@ public sealed partial class PlayerPage
         _triedFlags.Clear(); CancelSourceRefresh(); UpdateFlagUi();
         _catalogStarted = true; _waitingForCandidate = false;
         _ = PlayCurrent(position > 5000 ? position : 0);
+    }
+
+    bool _adFallbackStarted;
+    bool ReselectAdvertisedEpisode(string episode)
+    {
+        if (_catalogArgs == null || SourceAdPolicy.Get(_session.Catalog, _session.CurrentSite?.Key) != AdMark.Ads) return false;
+        App.Main.OpenPlayer(new PlayerArgs { Catalog = _session.Catalog.Copy(), EpisodeName = episode, StartOver = true, ForceReselect = true }); return true;
+    }
+    async void EnsureAdFallback()
+    {
+        if (_adFallbackStarted || _closed || _session.Catalog == null) return; _adFallbackStarted = true;
+        var ct = _discoveryCts?.Token ?? default; _discoveryDone = false;
+        ShowToast("其他来源未能播放，最后尝试已标记广告的来源");
+        try { await SourceDiscovery.RunAsync(_session.Catalog, null, null, null, _session.CurrentEpisode?.Name ?? _requestedEpisode, AddCandidate, UpdateDiscovery, ct, ignoreCache: true, adOnly: true); }
+        catch (OperationCanceledException) { } catch { }
+        finally { if (!_closed && !ct.IsCancellationRequested) { _discoveryDone = true; if (_waitingForCandidate && !TryNextCandidate()) ShowError("所有可用来源均未能播放，请稍后刷新或手动选择其他来源。"); } }
     }
 
     async void EnsureAdditionalSources()

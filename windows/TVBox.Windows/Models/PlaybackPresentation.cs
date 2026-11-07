@@ -12,12 +12,19 @@ public static class PlaybackPresentation
         if (h == null || h.Position < 1000) return "";
         var time = TimeSpan.FromMilliseconds(h.Position);
         var season = Regex.Match(h.VodName ?? "", @"第\s*([一二三四五六七八九十百\d]+)\s*季|Season\s*(\d+)|\bS(\d+)\b", RegexOptions.IgnoreCase);
-        var number = EpisodeIdentity.Parse(h.VodRemarks).Number;
+        var number = h.EpisodeNumber ?? EpisodeIdentity.Parse(h.VodRemarks).Number;
         var episode = number >= 0 ? number.ToString() : "";
         if (episode.Length > 0) episode = episode.TrimStart('0') is { Length: > 0 } digits ? digits : "0";
         var label = h.CatalogKind == "movie" ? "" :
-            (season.Success ? season.Value + " · " : "") + (episode.Length > 0 ? $"第{episode}集 · " : (!string.IsNullOrEmpty(h.VodRemarks) ? h.VodRemarks + " · " : ""));
+            (h.EpisodeSeason is >= 0 ? (h.EpisodeSeason == 0 ? "特别篇" : "第" + h.EpisodeSeason + "季") + " · " : season.Success ? season.Value + " · " : "") + (episode.Length > 0 ? $"第{episode}集 · " : (!string.IsNullOrEmpty(h.VodRemarks) ? h.VodRemarks + " · " : ""));
         return $"{label}{(int)time.TotalHours:00}:{time.Minutes:00}:{time.Seconds:00}";
+    }
+    public static string SidebarTitle(CatalogItem work, Vod vod, Episode episode)
+    {
+        var title = work?.Title ?? vod?.CleanName ?? "正在连接";
+        if ((work?.Kind ?? Engine.TitleMatchRules.GuessKind(vod?.TypeName)) != "tv") return title;
+        var identity = EpisodeIdentity.Parse(episode?.Name); var season = identity.Season >= 0 ? identity.Season : work?.SelectedSeason ?? (work == null ? 1 : Math.Max(1, Engine.CatalogIdentity.Season(work)));
+        return title + (season == 0 ? " · 特别篇" : $" · 第{season}季") + (identity.Number > 0 ? $" 第{identity.Number}集" : "");
     }
     public static int QualityScore(VodFlag flag)
     {

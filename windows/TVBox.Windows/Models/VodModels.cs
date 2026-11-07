@@ -179,6 +179,7 @@ public class VodFlag
 
 public class Episode
 {
+    public List<Sub> Subtitles { get; set; } = new();
     public string Name { get; set; } = "";
     public string Url { get; set; } = "";
     public int Index { get; set; }

@@ -18,6 +18,7 @@ public class PlayerArgs
     public string SeedVodId;
     public string EpisodeName;
     public bool ForceReselect;
+    public bool StartOver;
     public bool ManualSource;
 }
 

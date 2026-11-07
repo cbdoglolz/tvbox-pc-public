@@ -16,6 +16,7 @@ public sealed partial class WorkPosterCard : UserControl
     public WorkPosterCard()
     {
         InitializeComponent();
+        Unloaded += (_, _) => ViewingState.Changed -= OnWatchChanged;
         Loaded += (_, _) =>
         {
             if (Compact && !_compactApplied)
@@ -26,12 +27,22 @@ public sealed partial class WorkPosterCard : UserControl
                 Grid.SetColumn(TitleButton, 1); Grid.SetRow(TitleButton, 0); TitleButton.MaxWidth = 460;
                 Grid.SetColumn(Subtitle, 1); Grid.SetRow(Subtitle, 1); Subtitle.MaxWidth = 460;
             }
+            ViewingState.Changed -= OnWatchChanged; ViewingState.Changed += OnWatchChanged;
             RefreshFavorite();
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(PlayButton, Work?.Title ?? "影片");
         };
         DataContextChanged += (_, _) => { RefreshFavorite(); Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(PlayButton, Work?.Title ?? "影片"); };
     }
-    void RefreshFavorite() { if (Work != null) Favorite.Content = CatalogLibrary.FindKeep(Work, VodConfigService.Cid) == null ? "☆" : "★"; }
+    void OnWatchChanged() => DispatcherQueue.TryEnqueue(RefreshFavorite);
+    void RefreshFavorite() { if (Work != null) {
+        Favorite.Content = CatalogLibrary.FindKeep(Work, VodConfigService.Cid) == null ? "☆" : "★";
+        var state = ViewingState.Get(Work).Status;
+        if (state == WatchStatus.Unseen && CatalogHistory.Find(Work, Stores.GetHistories(VodConfigService.Cid)) is { Position: > 1000 } h) state = h.Duration > 0 && h.Duration - h.Position <= 15000 ? WatchStatus.Completed : WatchStatus.Watching;
+        WatchBadge.Visibility = state == WatchStatus.Unseen ? Visibility.Collapsed : Visibility.Visible;
+        WatchIcon.Text = state == WatchStatus.Completed ? "\uE73E" : "\uE890";
+        WatchIcon.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(state == WatchStatus.Completed ? Windows.UI.Color.FromArgb(255, 90, 211, 145) : Windows.UI.Color.FromArgb(255, 184, 137, 255));
+        ToolTipService.SetToolTip(WatchBadge, state == WatchStatus.Completed ? "已看完" : "正在看");
+    } }
     void OnPlay(object sender, RoutedEventArgs e) { if (Work != null) App.Main.OpenCatalogWork(Work); }
     void OnResume(object sender, RoutedEventArgs e) { if (Work != null) App.Main.OpenCatalogWork(Work); }
     void OnDetails(object sender, RoutedEventArgs e) { if (Work != null) CatalogActions.Details(Work); }

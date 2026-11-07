@@ -20,9 +20,16 @@ public record CatalogPerson(string Provider, string Id, string Name, string Char
     [JsonIgnore] public string RoleLabel => Character.Length > 0 ? Name + " 饰演 " + Character : Name + " · " + Job;
 }
 public record WorkSeason(int Number, string Name, int? Year, int? EpisodeCount, string Poster = "", string Overview = "")
-{ [JsonIgnore] public string Label => Number == 0 ? "特别篇" : "第" + Number + "季"; [JsonIgnore] public string Caption => Label + (EpisodeCount is > 0 ? " · " + EpisodeCount + "集" : ""); }
+{ [JsonIgnore] public string FallbackImage { get; set; } = ""; [JsonIgnore] public string PreviewImage => Poster.Length > 0 ? Poster : FallbackImage; [JsonIgnore] public string Label => Number == 0 ? "特别篇" : "第" + Number + "季"; [JsonIgnore] public string Caption => Label + (EpisodeCount is > 0 ? " · " + EpisodeCount + "集" : ""); }
 public record WorkEpisode(int Season, int Number, string Name, string Overview, string Still, string AirDate, int? Runtime, double? Rating, int? Votes)
 {
+    [JsonIgnore] public string PreviewImage { get; set; } = "";
+    [JsonIgnore] public string FallbackImage { get; set; } = "";
+    [JsonIgnore] public string ResumeLabel { get; set; } = "";
+    [JsonIgnore] public bool CanResume { get; set; }
+    [JsonIgnore] public string StateLabel { get; set; } = "未观看";
+    [JsonIgnore] public string StateGlyph { get; set; } = "\uE890";
+    [JsonIgnore] public string StateColor { get; set; } = "#A8FFFFFF";
     [JsonIgnore] public string Code => $"S{Season} E{Number}";
     [JsonIgnore] public string Heading => Code + " · " + (Name.Length > 0 ? Name : "第" + Number + "集");
     [JsonIgnore] public string Facts => (Runtime is > 0 ? Runtime + "分钟 · " : "") + "TMDB " + (Rating is > 0 && Votes != 0 ? Rating.Value.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) : "-") + (AirDate.Length > 0 ? " · " + AirDate : "");

@@ -34,7 +34,9 @@ public class DanmakuView : Grid
     bool _suspended;
     double _fontScale = 1;
     double _speed = 1;
-    double _area = 0.85;
+    double _area = 0.25;
+    bool _bold;
+    uint? _color;
 
     public DanmakuView()
     {
@@ -113,11 +115,25 @@ public class DanmakuView : Grid
 
     public void SetOpacity(double value) => _canvas.Opacity = Math.Clamp(value, 0.1, 1);
 
-    public void SetFontScale(double value) { _fontScale = Math.Clamp(value, 0.5, 2); }
+    public void SetFontScale(double value) { var next = Math.Clamp(value, 0.5, 2); if (_fontScale == next) return; _fontScale = next; Reflow(); }
 
-    public void SetSpeed(double value) { _speed = Math.Clamp(value, 0.5, 2.5); }
+    public void SetSpeed(double value) { var next = Math.Clamp(value, 0.5, 2.5); var ratio = next / _speed; _speed = next; foreach (var a in _scrolls) a.V *= ratio; var now = _core?.PositionMs ?? _baseMs; foreach (var a in _topTracks.Values.Concat(_bottomTracks.Values)) a.Expire = now + (long)(Math.Max(0, a.Expire - now) / ratio); }
 
-    public void SetArea(double value) { _area = Math.Clamp(value, 0.1, 1); }
+    public void SetArea(double value) { var next = Math.Clamp(value, 0.1, 1); if (_area == next) return; _area = next; Reflow(); }
+    void Reflow()
+    {
+        var height = BaseFontSize * _fontScale * 1.5; var count = Math.Max(1, (int)(ActualHeight * _area / height));
+        foreach (var active in AllActive().ToList()) {
+            if (active.Track >= count) { _canvas.Children.Remove(active.El); _scrolls.Remove(active); _lastInTrack.Remove(active.Track); _topTracks.Remove(active.Track); _bottomTracks.Remove(active.Track); continue; }
+            active.El.FontSize = BaseFontSize * _fontScale; active.El.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity)); active.W = active.El.DesiredSize.Width;
+            active.Y = active.Mode == 4 ? ActualHeight * _area - (active.Track + 1) * height : active.Track * height;
+            if (active.Mode != 1) active.X = (ActualWidth - active.W) / 2; else active.V = (ActualWidth + active.W) / (ScrollDurationMs / _speed);
+            Canvas.SetTop(active.El, active.Y); Canvas.SetLeft(active.El, active.X);
+        }
+    }
+    public void SetBold(bool value) { if (_bold == value) return; _bold = value; foreach (var a in AllActive()) a.El.FontWeight = value ? Microsoft.UI.Text.FontWeights.Bold : Microsoft.UI.Text.FontWeights.Normal; Reflow(); }
+    public void SetColor(string value) { _color = uint.TryParse(value, System.Globalization.NumberStyles.HexNumber, null, out var rgb) ? rgb & 0xFFFFFF : null; foreach (var a in AllActive()) a.El.Foreground = BrushOf(_color ?? a.Color); }
+    IEnumerable<Active> AllActive() => _scrolls.Concat(_topTracks.Values).Concat(_bottomTracks.Values);
 
     // ---- 时间同步 ----
 
@@ -189,7 +205,8 @@ public class DanmakuView : Grid
         {
             Text = item.Text,
             FontSize = fontSize,
-            Foreground = BrushOf(item.Color),
+            Foreground = BrushOf(_color ?? item.Color),
+            FontWeight = _bold ? Microsoft.UI.Text.FontWeights.Bold : Microsoft.UI.Text.FontWeights.Normal,
             IsHitTestVisible = false,
         };
         el.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
@@ -202,8 +219,8 @@ public class DanmakuView : Grid
             int track = -1;
             for (int t = 0; t < trackCount; t++) if (!tracks.ContainsKey(t)) { track = t; break; }
             if (track < 0) return; // 无空轨道 → 丢弃
-            double y = item.Mode == 5 ? track * trackHeight : ActualHeight - (track + 1) * trackHeight;
-            var active = new Active { El = el, X = (canvasW - w) / 2, Y = y, W = w, Track = track, Mode = item.Mode, Expire = now + (long)(FixedDurationMs / _speed) };
+            double y = item.Mode == 5 ? track * trackHeight : ActualHeight * _area - (track + 1) * trackHeight;
+            var active = new Active { Color = item.Color, El = el, X = (canvasW - w) / 2, Y = y, W = w, Track = track, Mode = item.Mode, Expire = now + (long)(FixedDurationMs / _speed) };
             Place(active);
             tracks[track] = active;
         }
@@ -217,7 +234,7 @@ public class DanmakuView : Grid
                 if (last.X + last.W < canvasW - TrackGap && last.V >= v * 0.8) { track = t; break; }
             }
             if (track < 0) return; // 无空轨道 → 丢弃
-            var active = new Active { El = el, X = canvasW, Y = track * trackHeight, W = w, V = v, Track = track, Mode = 1 };
+            var active = new Active { Color = item.Color, El = el, X = canvasW, Y = track * trackHeight, W = w, V = v, Track = track, Mode = 1 };
             Place(active);
             _scrolls.Add(active);
             _lastInTrack[track] = active;
@@ -269,6 +286,7 @@ public class DanmakuView : Grid
     class Active
     {
         public TextBlock El;
+        public uint Color;
         public double X, Y, W, V; // V: px/ms（仅滚动）
         public int Track, Mode;
         public long Expire;       // 仅顶部/底部

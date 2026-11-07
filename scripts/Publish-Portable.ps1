@@ -1,10 +1,10 @@
-﻿[CmdletBinding()]
+[CmdletBinding()]
 param(
     [ValidateSet("x64")]
     [string]$Architecture = "x64",
 
     [ValidatePattern("^\d+\.\d+\.\d+$")]
-    [string]$Version = "0.8.6",
+    [string]$Version = "0.8.7",
 
     [string]$OutputRoot = "",
 
@@ -327,7 +327,7 @@ function Test-ReleaseContent {
         throw "发布输出包含运行时用户目录: $($badDirectories.Name -join ', ')"
     }
 
-    $textExtensions = @(".config", ".json", ".js", ".md", ".txt", ".xml", ".yaml", ".yml")
+    $textExtensions = @(".config", ".json", ".js", ".cjs", ".mjs", ".md", ".txt", ".xml", ".yaml", ".yml")
     $patterns = [ordered]@{
         "Windows 本机用户路径" = "(?i)[A-Z]:\\Users\\[^\r\n`"']+"
         "带用户名或密码的 URL" = '(?i)https?://[^\s/@:]+:[^\s/@]+@'
@@ -370,7 +370,7 @@ function Test-PublishInputs {
         "wexfnwconfig.json"
     )
     $forbiddenExtensions = @(".pdb", ".log", ".tmp", ".bak", ".dmp")
-    $textExtensions = @(".config", ".json", ".js", ".md", ".txt", ".xml", ".yaml", ".yml")
+    $textExtensions = @(".config", ".json", ".js", ".cjs", ".mjs", ".md", ".txt", ".xml", ".yaml", ".yml")
     $patterns = [ordered]@{
         "Windows 本机用户路径" = "(?i)[A-Z]:\\Users\\[^\r\n\`"']+"
         "带用户名或密码的 URL" = '(?i)https?://[^\s/@:]+:[^\s/@]+@'

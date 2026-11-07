@@ -69,3 +69,10 @@ The Netflix view uses Douban's Netflix-tagged catalog, not Netflix's official ch
 ## 作品背景与透明标题图（0.8.3）
 
 在用户可选启用TMDB资料时，作品海报、横向背景及透明标题图片通过TMDB图片API获取并缓存在用户资料目录；这些是作品图片资源，不是本项目制作或重新许可的字体。图片语言优先级参考 https://developer.themoviedb.org/docs/image-languages ，图片接口见 https://developer.themoviedb.org/reference/movie-images 。保留原TMDB归属声明；并非每部作品都提供中文海报或标题图片。本版没有把查询所得影视图片或用户缓存打进程序包。
+
+
+## Nuvio experimental providers (0.8.7)
+
+Bundled `assets/providers/4khdhub.cjs`, `anizone.cjs`, and `vixsrc.cjs` are adapted from [yoruix/nuvio-providers](https://github.com/yoruix/nuvio-providers), pinned commit `ed38d1aee0024f56479369c9423fefb278e0b62a`, under GPL-3.0. The complete upstream license is shipped as `assets/providers/LICENSE`; per-file source URLs and adapted file SHA-256 values are in `assets/providers/provenance.json`. Preserve upstream authorship comments.
+
+Changes remove upstream shared TMDB credentials, supply already-selected public film metadata from the app, require exact work/year or anime mapping instead of an arbitrary first result, and use a fixed bundled runner with bounded public HTTP requests. No runtime provider download, Android .cs3 execution, account-cookie import or CAPTCHA automation is included. The local runner is project code; Node and Cheerio notices above also apply. All three adapters default off and are experimental: returning metadata or media bytes is not successful decoder playback. No guarantee of provider availability or subtitle language is made.

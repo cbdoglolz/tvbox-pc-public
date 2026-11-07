@@ -6,6 +6,7 @@ namespace TVBoxForWindows
 }
 namespace TVBoxForWindows.Models
 {
+    public class Sub { public string Lang { get; set; } = ""; public string Name { get; set; } = ""; public string Url { get; set; } = ""; }
     public class Result
     {
         public List<Vod> List { get; set; } = new();
@@ -21,6 +22,7 @@ namespace TVBoxForWindows.Engine
         public static VodConfigService Instance { get; } = new();
         public List<Site> Sites { get; set; } = new();
     }
+    internal static class NodeRuntime { public static bool EnsureNode() => false; public static string NodePath => ""; }
     internal static class SiteService
     {
         public static Func<Site, string, Task<Result>> Search = (_, _) => Task.FromResult(new Result());

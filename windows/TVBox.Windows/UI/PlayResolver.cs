@@ -41,7 +41,7 @@ public static class PlayResolver
             Headers = headers,
             Format = result.Format,
             Drm = result.Drm,
-            Subs = result.Subs ?? new List<Models.Sub>(),
+            Subs = (result.Subs ?? new List<Models.Sub>()).Concat(ep?.Subtitles ?? new List<Models.Sub>()).ToList(),
             Danmaku = result.Danmaku ?? new List<Models.Danmaku>(),
             StartPositionMs = result.Position is > 0 ? result.Position.Value : 0,
         };

@@ -54,6 +54,8 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
     bool _backgrounded;
     bool _resumePending;
     bool _pauseWhenOpened;                         // 隐藏期间晚到的解析结果起播后立即暂停
+    readonly BufferingHealth _bufferHealth = new();
+    long _lastBufferHint;
     bool _isBuffering;
     bool _bufferingCompletionDeferred;
     bool _loadingTransferRateKnown;
@@ -194,7 +196,7 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
         if (_toastTimer == null)
         {
             _toastTimer = DispatcherQueue.CreateTimer();
-            _toastTimer.Interval = TimeSpan.FromSeconds(2);
+            _toastTimer.Interval = TimeSpan.FromSeconds(8);
             _toastTimer.IsRepeating = false;
             _toastTimer.Tick += (s, e) => Toast.IsOpen = false;
         }
@@ -271,6 +273,7 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
     /// <summary>解析并起播当前集。resumeMs>0 时续播到该位置；否则按跳片头设置起播。</summary>
     async Task PlayCurrent(long resumeMs, bool showRestoreToast = false)
     {
+        _bufferHealth.Reset();
         var ep = _session.CurrentEpisode;
         if (ep == null || _core == null) return;
         CancelDanmakuLoad();
@@ -396,6 +399,9 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
         }
 
         _bufferingCompletionDeferred = false;
+        var repeatedBuffering = !_resumePending && _pendingSeekMs == null && _bufferHealth.Observe(buffering, Environment.TickCount64);
+        if (!buffering && !_resumePending) Logger.D("PlaybackBuffer", $"site={_session?.CurrentSite?.Key}, count={_bufferHealth.Count}, totalMs={_bufferHealth.TotalMs}");
+        if (repeatedBuffering && Environment.TickCount64 - _lastBufferHint > 60000) { _lastBufferHint = Environment.TickCount64; ShowToast("当前来源连续缓冲；可刷新比较其他来源，当前视频保持播放。缓冲统计可在媒体详情查看。"); }
         _isBuffering = buffering;
         if (buffering) ShowLoading(_resumePending ? "正在恢复观看进度…" : "缓冲中…", true);
         else if (!_resumePending) HideLoading();
@@ -440,7 +446,6 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
     void OnPlayError(string msg)
     {
         RecordSourceFailure();
-        _preferredCompletion?.TrySetResult(false);
         _isBuffering = false;
         CancelPendingSeek();
         HideLoading();
@@ -454,6 +459,7 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
             _triedFlags.Add(_session.FlagIndex);
             DiscoveryStatusText.Text = $"{_session.CurrentSite?.Name} · 播放失败，正在尝试备用来源";
             if (TryNextCandidate()) return;
+            if (_preferredCompletion != null) { _preferredCompletion.TrySetResult(false); return; }
             if (_preferredCompletion == null && !_additionalSourcesStarted)
             {
                 _waitingForCandidate = true; SetSourceTransition(false);
@@ -467,6 +473,7 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
                 ShowLoading("当前来源不可用，继续查找其他播放源…", false);
                 return;
             }
+            if (!_adFallbackStarted && SiteRegistry.Active.Any(s => SourceAdPolicy.Get(_session.Catalog, s.Key) == AdMark.Ads)) { _waitingForCandidate = true; SetSourceTransition(false); EnsureAdFallback(); return; }
             SetSourceTransition(false);
             ShowError("已尝试所有匹配来源，暂时没有可播放的视频。可点击重新选源或手动切换线路。" + msg);
             return;
@@ -665,6 +672,7 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
             h.Speed = _speed;
             h.Scale = _scale;
             Stores.SaveHistory(h);
+            ViewingState.Observe(_session.Catalog ?? CatalogLibrary.FromHistory(h), h);
         }
         catch (Exception e) { Logger.E(TAG, "历史保存失败: " + e.Message); }
     }
@@ -677,15 +685,25 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
 
     // ---------- 集数 / 线路 ----------
 
+    string CatalogAdjacentEpisode(int delta)
+    {
+        if (_catalogArgs == null || _session?.Catalog is not { Kind: "tv" } work) return null;
+        var number = EpisodeIdentity.Parse(_session.CurrentEpisode?.Name).Number + delta;
+        var count = work.Seasons.FirstOrDefault(s => s.Number == (work.SelectedSeason ?? Math.Max(1, CatalogIdentity.Season(work))))?.EpisodeCount;
+        return number > 0 && count is > 0 && number <= count ? "第" + number.ToString("00") + "集" : null;
+    }
     void ChangeEpisode(int delta)
     {
         if (_sourceTransitionInProgress) return;
         var eps = _session.CurrentFlag?.Episodes;
         if (eps == null || eps.Count == 0) return;
         int idx = _session.EpisodeIndex + delta;
-        if (idx < 0) { ShowToast("已经是第一集"); return; }
-        if (idx >= eps.Count) { ShowToast("已经是最后一集"); return; }
+        if (idx < 0 || idx >= eps.Count) {
+            if (CatalogAdjacentEpisode(delta) is string next) { SaveHistoryNow(); App.Main.OpenPlayer(new PlayerArgs { Catalog = _session.Catalog.Copy(), EpisodeName = next, StartOver = true }); return; }
+            ShowToast(delta < 0 ? "已经是第一集" : "已经是最后一集"); return;
+        }
         SaveHistoryNow();
+        if (ReselectAdvertisedEpisode(eps[idx].Name)) return;
         _session.EpisodeIndex = idx;
         CancelSourceRefresh();
         if (_session.History != null) _session.History.Position = 0;
@@ -717,6 +735,7 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
 
     void UpdateFlagUi(bool syncMenus = true)
     {
+        if (_session != null) RefreshAdMark();
         if (_catalogArgs != null && _session != null) UpdateDiscoveryText();
         var label = _session.CurrentFlag?.Flag ?? "线路";
         FlagText.Text = label;
@@ -741,10 +760,10 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
         CompactFlagButton.IsEnabled = FlagButton.IsEnabled;
         EpisodeButton.IsEnabled = enabled && episodes is { Count: > 0 };
         CompactEpisodeButton.IsEnabled = enabled && episodes is { Count: > 0 };
-        PrevEpisodeButton.IsEnabled = enabled && _session?.EpisodeIndex > 0;
+        PrevEpisodeButton.IsEnabled = enabled && (_session?.EpisodeIndex > 0 || CatalogAdjacentEpisode(-1) != null);
         CompactPrevEpisodeButton.IsEnabled = PrevEpisodeButton.IsEnabled;
         var hasNext = episodes is { Count: > 0 } && _session.EpisodeIndex + 1 < episodes.Count;
-        NextEpisodeButton.IsEnabled = enabled && hasNext;
+        NextEpisodeButton.IsEnabled = enabled && (hasNext || CatalogAdjacentEpisode(1) != null);
         CompactNextEpisodeButton.IsEnabled = NextEpisodeButton.IsEnabled;
     }
 
@@ -766,6 +785,7 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
         if (idx < 0) return;
         if (idx == _session.EpisodeIndex) return; // 点当前集不重播
         SaveHistoryNow();
+        if (ReselectAdvertisedEpisode(ep.Name)) return;
         _session.EpisodeIndex = idx;
         CancelSourceRefresh();
         if (_session.History != null) _session.History.Position = 0;
@@ -1127,8 +1147,10 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
         if (_danmaku == null) return;
         _danmaku.SetOpacity(ReadFloat("danmaku_alpha", 0.9f));
         _danmaku.SetFontScale(Setting.GetInt("danmaku_size", 24) / 22.0);   // DanmakuView 基准字号 22
-        _danmaku.SetSpeed(Setting.GetInt("danmaku_speed", 2) switch { 1 => 0.75, 3 => 1.5, _ => 1.0 });
-        _danmaku.SetArea(Math.Clamp(Setting.GetInt("danmaku_area", 50), 10, 100) / 100.0);
+        _danmaku.SetSpeed(ReadFloat("danmaku_speed_factor", Setting.GetInt("danmaku_speed", 2) switch { 1 => 0.75f, 3 => 1.5f, _ => 1.0f }));
+        _danmaku.SetBold(Setting.GetBool("danmaku_bold"));
+        _danmaku.SetColor(Setting.GetString("danmaku_color", "original"));
+        _danmaku.SetArea(Math.Clamp(Setting.GetInt("danmaku_area", 25), 10, 100) / 100.0);
     }
 
     CancellationTokenSource _danmakuCts;
@@ -1144,8 +1166,34 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
         _danmakuVisible = Setting.DanmakuLoad; _danmaku?.SetVisible(_danmakuVisible); UpdateDanmakuButtonVisual();
         if (_item != null) StartAutomaticDanmaku(_item);
     });
-    void SetDanmakuStatus(string status)
-    { DanmakuEmptyText.Text = status; DanmakuStatusText.Text = "弹幕 · " + status; }
+    bool _danmakuAppearanceLoading;
+    void SetDanmakuStatus(string status, bool failed = false)
+    {
+        DanmakuEmptyText.Text = status;
+        DanmakuWarning.Visibility = CompactDanmakuWarning.Visibility = failed ? Visibility.Visible : Visibility.Collapsed;
+        ToolTipService.SetToolTip(DanmakuMenuButton, status + " · 点击查看弹幕源与设置");
+        ToolTipService.SetToolTip(CompactDanmakuMenuButton, status + " · 点击查看弹幕源与设置");
+        CompactDanmakuMenuButton.Foreground = failed ? new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(255, 255, 196, 72)) : new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.White);
+    }
+    void SaveDanmakuAppearance()
+    {
+        if (_danmakuAppearanceLoading || DanmakuSize == null || DanmakuArea?.SelectedItem == null || DanmakuColor?.SelectedItem == null) return;
+        Setting.Put("danmaku_size", (int)Math.Clamp(double.IsNaN(DanmakuSize.Value) ? 24 : DanmakuSize.Value, 12, 44));
+        Setting.Put("danmaku_bold", DanmakuBold.IsChecked == true);
+        Setting.Put("danmaku_color", (DanmakuColor.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "original");
+        Setting.Put("danmaku_area", int.Parse((DanmakuArea.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "25"));
+        Setting.Put("danmaku_speed_factor", DanmakuSpeed.Value); ApplyDanmakuSettings();
+    }
+    void OnDanmakuAppearance(NumberBox sender, NumberBoxValueChangedEventArgs e) => SaveDanmakuAppearance();
+    void OnDanmakuAppearanceClick(object sender, RoutedEventArgs e) => SaveDanmakuAppearance();
+    void OnDanmakuAppearanceChoice(object sender, SelectionChangedEventArgs e) => SaveDanmakuAppearance();
+    void OnDanmakuAppearanceSlider(object sender, RangeBaseValueChangedEventArgs e) => SaveDanmakuAppearance();
+    async void OnDanmakuWebsite(object sender, RoutedEventArgs e)
+    {
+        var url = (sender as FrameworkElement)?.Tag?.ToString() ?? "";
+        if (url.EndsWith("=") || url.EndsWith("q_")) url += Uri.EscapeDataString(_session?.Catalog?.Title ?? _session?.Vod?.CleanName ?? "");
+        try { await Launcher.LaunchUriAsync(new Uri(url)); } catch { ShowToast("未能打开弹幕网站"); }
+    }
     void StartAutomaticDanmaku(PlayItem item)
     {
         if (!Setting.DanmakuLoad) { SetDanmakuStatus("弹幕未启用，可在设置中开启自动搜索"); return; }
@@ -1166,21 +1214,21 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
                 var result = await new DanmakuSearch().SearchCachedAsync(work, _session.CurrentEpisode?.Name, Setting.DanmakuApi, ct, refresh);
                 if (ct.IsCancellationRequested || generation != _danmakuGeneration || _closed) return;
                 sourceLabel = result.Provider.Length > 0 ? result.Provider : "自动弹幕";
-                ToolTipService.SetToolTip(DanmakuStatusButton, result.Message + " · " + result.EpisodeTitle + (result.LibraryId.Length > 0 ? " · 库ID " + result.LibraryId : ""));
+                ToolTipService.SetToolTip(DanmakuMenuButton, result.Message + " · " + result.EpisodeTitle + (result.LibraryId.Length > 0 ? " · 库ID " + result.LibraryId : ""));
                 SetDanmakuStatus(result.Message);
-                input = result.Text; if (string.IsNullOrEmpty(input)) { ShowToast(result.Message); return; }
+                input = result.Text; if (string.IsNullOrEmpty(input)) { SetDanmakuStatus(result.Message, true); ShowToast(result.Message); return; }
             }
             var engine = new DanmakuEngine();
             await Task.Run(() => engine.LoadAsync(input, ct), ct);
             if (ct.IsCancellationRequested || generation != _danmakuGeneration || _closed) return;
             if (engine.Items.Count == 0 && !automatic && Setting.DanmakuAuto) { _ = LoadDanmaku(null, automatic: true); return; }
-            if (engine.Items.Count == 0) { SetDanmakuStatus("本片本集没有可用弹幕"); ShowToast(DanmakuEmptyText.Text); return; }
+            if (engine.Items.Count == 0) { SetDanmakuStatus("本片本集没有可用弹幕", true); ShowToast(DanmakuEmptyText.Text); return; }
             _danmakuEngine = engine; _danmaku.Bind(_core, engine); _danmaku.SetVisible(_danmakuVisible);
             if (_pauseWhenOpened || _backgrounded) _danmaku.Suspend();
             SetDanmakuStatus(sourceLabel + " · 已加载 " + engine.Items.Count + " 条"); ShowToast(DanmakuEmptyText.Text);
         }
-        catch (OperationCanceledException) { if (!_closed && generation == _danmakuGeneration) SetDanmakuStatus("弹幕搜索超时，可稍后重试"); }
-        catch { if (!_closed && generation == _danmakuGeneration) { SetDanmakuStatus("弹幕服务暂不可用；可更换聚合服务或手动导入"); ShowToast(DanmakuEmptyText.Text); } }
+        catch (OperationCanceledException) { if (!_closed && generation == _danmakuGeneration) SetDanmakuStatus("弹幕搜索超时，可稍后重试", true); }
+        catch { if (!_closed && generation == _danmakuGeneration) { SetDanmakuStatus("弹幕服务暂不可用；可更换聚合服务或手动导入", true); ShowToast(DanmakuEmptyText.Text); } }
         finally { if (ReferenceEquals(_danmakuCts, cts)) _danmakuCts = null; cts.Dispose(); }
     }
 
@@ -1227,6 +1275,13 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
     {
         DanmakuList.ItemsSource = _danmakuSources;
         DanmakuEmptyText.Visibility = Visibility.Visible;
+        _danmakuAppearanceLoading = true;
+        DanmakuSize.Value = Setting.GetInt("danmaku_size", 24);
+        DanmakuBold.IsChecked = Setting.GetBool("danmaku_bold");
+        DanmakuSpeed.Value = ReadFloat("danmaku_speed_factor", 1);
+        DanmakuArea.SelectedItem = DanmakuArea.Items.Cast<ComboBoxItem>().FirstOrDefault(i => i.Tag?.ToString() == Setting.GetInt("danmaku_area", 25).ToString()) ?? DanmakuArea.Items[0];
+        DanmakuColor.SelectedItem = DanmakuColor.Items.Cast<ComboBoxItem>().FirstOrDefault(i => i.Tag?.ToString() == Setting.GetString("danmaku_color", "original")) ?? DanmakuColor.Items[0];
+        _danmakuAppearanceLoading = false;
     }
 
     void OnDanmakuSourceClick(object sender, ItemClickEventArgs e)
@@ -1482,7 +1537,7 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
         _hideTimer?.Stop(); _danmaku?.Suspend(); SaveHistoryNow();
     }
     public (string Title, long Position, long Duration, bool Playing) SidebarStatus =>
-        (_session?.Vod?.CleanName ?? _session?.Catalog?.Title ?? "正在连接", _core?.PositionMs ?? 0, _core?.DurationMs ?? 0, !_closed && _core?.IsPlaying == true && !_core.IsBuffering);
+        (PlaybackPresentation.SidebarTitle(_session?.Catalog, _session?.Vod, _session?.CurrentEpisode), _core?.PositionMs ?? 0, _core?.DurationMs ?? 0, !_closed && _core?.IsPlaying == true && !_core.IsBuffering);
     public bool MatchesPlayback(PlayerArgs args) => !_closed && !args.ForceReselect &&
         (args.Catalog != null && _session?.Catalog != null ? CatalogIdentity.SameWork(args.Catalog, _session.Catalog) : ReferenceEquals(args.Session, _session)) &&
         (string.IsNullOrEmpty(args.EpisodeName) || args.EpisodeName == _session?.CurrentEpisode?.Name ||
@@ -1909,20 +1964,18 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
         LoadingOverlay.Visibility = Visibility.Collapsed;
     }
 
+    readonly Queue<string> _toastQueue = new();
     void ShowToast(string msg)
     {
-        Toast.Message = msg ?? "";
-        Toast.IsOpen = true;
-        _toastTimer?.Stop();
-        _toastTimer?.Start();
+        if (_closed) return; msg ??= ""; if (msg.Length == 0) return;
+        if (Toast.IsOpen || ErrorBar.IsOpen) { if (Toast.Message != msg && !_toastQueue.Contains(msg)) { if (_toastQueue.Count >= 6) _toastQueue.Dequeue(); _toastQueue.Enqueue(msg); } return; }
+        Toast.Message = msg; Toast.IsOpen = true; _toastTimer?.Stop(); _toastTimer?.Start();
     }
-
+    void OnToastClosed(InfoBar sender, InfoBarClosedEventArgs args) { _toastTimer?.Stop(); if (!ErrorBar.IsOpen && _toastQueue.TryDequeue(out var next)) ShowToast(next); }
+    void OnErrorClosed(InfoBar sender, InfoBarClosedEventArgs args) { if (!Toast.IsOpen && _toastQueue.TryDequeue(out var next)) ShowToast(next); }
     void ShowError(string msg)
     {
-        _isBuffering = false;
-        HideLoading();
-        ErrorBar.Message = msg ?? "";
-        ErrorBar.IsOpen = true;
+        _isBuffering = false; HideLoading(); ErrorBar.Message = msg ?? ""; ErrorBar.IsOpen = true; Toast.IsOpen = false;
     }
 
     static string Fmt(long ms)
@@ -1971,6 +2024,10 @@ public sealed class PlayerSelectionItem
         IsSelected = isSelected;
     }
 
+    public AdMark AdStatus { get; init; }
+    public string AdSiteKey { get; init; } = "";
+    public bool HasAdSite => AdSiteKey.Length > 0;
+    public string AdLabel { get; init; } = "";
     public string Label { get; }
     public string Detail { get; init; } = "";
     public string DetailColor { get; init; } = "#FFAAAAAA";

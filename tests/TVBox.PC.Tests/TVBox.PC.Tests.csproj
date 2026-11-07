@@ -6,6 +6,10 @@
     <Nullable>disable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../windows/TVBox.Windows/Core/ViewingState.cs" Link="Core/ViewingState.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Core/SiteRegistry.cs" Link="Core/SiteRegistry.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Models/BufferingHealth.cs" Link="Models/BufferingHealth.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Engine/InternationalSources.cs" Link="Engine/InternationalSources.cs"/>
     <Compile Include="../../windows/TVBox.Windows/Models/EpisodeIdentity.cs" Link="Models/EpisodeIdentity.cs"/>
     <Compile Include="../../windows/TVBox.Windows/Models/PlaybackTimeline.cs" Link="Models/PlaybackTimeline.cs"/>
     <Compile Include="../../windows/TVBox.Windows/Core/ReleaseUpdate.cs" Link="Core/ReleaseUpdate.cs"/>

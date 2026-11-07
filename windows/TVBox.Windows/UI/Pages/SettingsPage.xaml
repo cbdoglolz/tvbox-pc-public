@@ -325,6 +325,7 @@
                 <TextBlock Text="片源统计与缓存" Style="{StaticResource CardTitle}"/>
                 <TextBlock Text="每个播放会话中，每集首次真正出画面后记一次胜出；同会话手动换源不重复计胜。探测通过不算成功开播。无痕模式不记录。" Style="{StaticResource RowDesc}" TextWrapping="Wrap"/>
                 <Button Content="刷新片源统计" Click="OnRefreshSourceStatistics"/>
+                <TextBlock Text="广告标记统计 · 按作品/季统计，非广告段数量" FontWeight="SemiBold"/><TextBlock x:Name="AdStatisticsText" TextWrapping="Wrap"/>
                 <TextBlock x:Name="SourceStatisticsText" TextWrapping="Wrap" IsTextSelectionEnabled="True"/>
                 <ToggleSwitch x:Name="CacheAutoToggle" Header="后台自动清理缓存" Toggled="OnCacheSettingsChanged"/>
                 <ComboBox x:Name="CacheLimitCombo" Header="缓存上限" SelectionChanged="OnCacheLimitChanged">
@@ -426,7 +427,7 @@
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="显示区域" VerticalAlignment="Center"/>
                     <ComboBox x:Name="DanmakuAreaCombo" Grid.Column="1" MinWidth="160" Style="{StaticResource RightCombo}" SelectionChanged="OnDanmakuAreaChanged">
-                        <ComboBoxItem Content="1/4 屏"/>
+                        <ComboBoxItem Content="1/4 屏"/><ComboBoxItem Content="1/3 屏"/>
                         <ComboBoxItem Content="半屏"/>
                         <ComboBoxItem Content="3/4 屏"/>
                         <ComboBoxItem Content="全屏"/>

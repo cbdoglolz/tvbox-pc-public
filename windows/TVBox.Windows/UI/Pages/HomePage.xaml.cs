@@ -72,6 +72,10 @@ public sealed partial class HomePage : Page
         PosterWall.Loaded += (_, _) => AttachScroll();
         PosterWall.SizeChanged += (_, _) => UpdateHeroLayout();
         PosterWall.AddHandler(PointerWheelChangedEvent, new PointerEventHandler(OnWheel), true);
+        ContinueRows.AddHandler(PointerPressedEvent, new PointerEventHandler(OnContinueDragPressed), true);
+        ContinueRows.AddHandler(PointerMovedEvent, new PointerEventHandler(OnContinueDragMoved), true);
+        ContinueRows.AddHandler(PointerReleasedEvent, new PointerEventHandler(OnContinueDragReleased), true);
+        ContinueRows.PointerCaptureLost += (_, _) => _continueDragging = false;
     }
     void PopulateCategories()
     {
@@ -137,10 +141,10 @@ public sealed partial class HomePage : Page
     {
         if (_state == null) return; var histories = Stores.GetHistories(VodConfigService.Cid);
         foreach (var work in _items.Concat(_daily?.Items ?? new List<CatalogItem>())) work.UpdateProgress(CatalogHistory.Find(work, histories));
-        _continue = histories.FirstOrDefault(h => h.Position >= 1000 && h.Duration > h.Position + 10000);
+        _continue = histories.FirstOrDefault(h => ViewingState.IsContinue(h));
         ContinueButton.Visibility = Visibility.Collapsed;
         ContinuePanel.Visibility = _continue == null ? Visibility.Collapsed : Visibility.Visible;
-        var recentItems = histories.Where(h => h.Position >= 1000 && h.Duration > h.Position + 10000).Take(8).ToList();
+        var recentItems = histories.Where(h => ViewingState.IsContinue(h)).ToList();
         var signature = string.Join("|", recentItems.Select(h => h.VodName + h.EpisodeUrl + h.Position + ":" + h.Duration));
         if (_continueSignature != signature) {
             _continueSignature = signature; _continueCts?.Cancel(); _continueCts = new();
@@ -151,7 +155,34 @@ public sealed partial class HomePage : Page
         if (_continue != null) ContinueButton.Content = "继续观看 · " + _continue.VodName + " · " + PlaybackPresentation.Progress(_continue);
     }
     public void EnterBackground() { SavePosition(); _active = false; _continueCts?.Cancel(); _continueSignature = null; _request?.Cancel(); _dailyCts?.Cancel(); _carousel.Stop(); _loading = false; }
-    void OnContinueCard(object sender, ItemClickEventArgs e) { if (e.ClickedItem is ContinueCard card) { SavePosition(); CatalogActions.Details(card.Work); } }
+    void OnContinueCard(object sender, ItemClickEventArgs e) { if (Environment.TickCount64 < _suppressContinueUntil) return; if (e.ClickedItem is ContinueCard card) { SavePosition(); CatalogActions.Details(card.Work); } }
+    public List<string> SuggestionTitles => _items.Concat(_daily?.Items ?? new()).Select(w => w.Title).Where(t => t.Length > 0).Distinct().Take(8).ToList();
+    async void OnClearContinue(object sender, RoutedEventArgs e)
+    {
+        var dialog = new ContentDialog { RequestedTheme = ActualTheme, XamlRoot = XamlRoot, Title = "清空继续观看？", Content = "从首页移除全部继续观看卡片，历史进度和收藏仍然保留。", PrimaryButtonText = "清空", CloseButtonText = "取消" };
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary) { ViewingState.Hide(Stores.GetHistories(VodConfigService.Cid).Where(ViewingState.IsContinue)); RefreshLocalState(); }
+    }
+    void OnRemoveContinue(object sender, RoutedEventArgs e) { if ((sender as FrameworkElement)?.DataContext is ContinueCard card) { ViewingState.Hide(new[] { card.History }); RefreshLocalState(); } }
+    bool _continueDragging;
+    double _continueDragX, _continueDragOffset;
+    long _suppressContinueUntil;
+    ScrollViewer _continueScroll;
+    void OnContinueDragPressed(object sender, PointerRoutedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(ContinueRows).Properties.IsLeftButtonPressed) return;
+        var source = e.OriginalSource as DependencyObject;
+        while (source != null && source != ContinueRows) { if (source is Microsoft.UI.Xaml.Controls.Primitives.ButtonBase) return; source = VisualTreeHelper.GetParent(source); }
+        _continueScroll = FindScroll(ContinueRows); _continueDragging = _continueScroll != null;
+        _continueDragX = e.GetCurrentPoint(ContinueRows).Position.X; _continueDragOffset = _continueScroll?.HorizontalOffset ?? 0;
+    }
+    void OnContinueDragMoved(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_continueDragging || !e.GetCurrentPoint(ContinueRows).Properties.IsLeftButtonPressed) return;
+        var delta = e.GetCurrentPoint(ContinueRows).Position.X - _continueDragX; if (Math.Abs(delta) < 6) return;
+        ContinueRows.CapturePointer(e.Pointer); _suppressContinueUntil = Environment.TickCount64 + 500;
+        _continueScroll.ChangeView(Math.Clamp(_continueDragOffset - delta, 0, _continueScroll.ScrollableWidth), null, null, true); e.Handled = true;
+    }
+    void OnContinueDragReleased(object sender, PointerRoutedEventArgs e) { _continueDragging = false; ContinueRows.ReleasePointerCapture(e.Pointer); }
     async Task LoadContinueArtworkAsync(List<ContinueCard> cards, CancellationToken ct)
     {
         foreach (var card in cards) {
@@ -250,7 +281,7 @@ public sealed partial class HomePage : Page
     void AttachScroll()
     {
         var scroll = FindScroll(PosterWall); if (scroll == null) return;
-        if (_scroll != scroll) { if (_scroll != null) _scroll.ViewChanged -= OnViewChanged; _scroll = scroll; _scroll.ViewChanged += OnViewChanged; }
+        if (_scroll != scroll) { if (_scroll != null) _scroll.ViewChanged -= OnViewChanged; _scroll = scroll; _scroll.ViewChanged += OnViewChanged; ReturnButtons.Attach(_scroll, () => _wheelArmed = false); }
         RestoreOffset();
     }
     void RestoreOffset()

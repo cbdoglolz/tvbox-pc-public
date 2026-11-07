@@ -11,22 +11,25 @@ public static class SourceDiscovery
     public const int ConcurrentSites = 10;
     public static async Task RunAsync(CatalogItem title, string seedKey, string seedId, string preferredKey,
         string episodeName, Action<PlaybackCandidate> found, Action<DiscoveryStatus> status, CancellationToken ct,
-        string onlySiteKey = null, string excludeSiteKey = null, bool ignoreCache = false, string preference = null)
+        string onlySiteKey = null, string excludeSiteKey = null, bool ignoreCache = false, string preference = null, bool adOnly = false, bool internationalOnly = false)
     {
         // A running generation must not change rules midway when the settings combo changes.
         var quality = (preference ?? Setting.SourcePreference) == "quality";
         var health = ignoreCache ? new Dictionary<string, SourceHealth>() : await Task.Run(() => SourceLearning.Health(title, episodeName, VodConfigService.Cid), ct).ConfigureAwait(false);
-        var sites = VodConfigService.Instance.Sites.Where(s => s.IsSearchable && !s.IsHidden)
-            .Where(s => (onlySiteKey == null || s.Key == onlySiteKey) && s.Key != excludeSiteKey)
+        var sites = SiteRegistry.Active.Where(s => (s.IsSearchable || s.Type == InternationalSources.SiteType) && !s.IsHidden)
+            .Where(s => (onlySiteKey == null || s.Key == onlySiteKey) && s.Key != excludeSiteKey && (!adOnly || SourceAdPolicy.Get(title, s.Key) == AdMark.Ads) && (!internationalOnly || s.Type == InternationalSources.SiteType))
             .OrderByDescending(s => s.Key == (string.IsNullOrEmpty(seedKey) ? preferredKey : seedKey)).ToList();
         var initial = sites.Where(s => ignoreCache || s.Key == seedKey || SourceLearning.Eligible(health, s.Key, DateTimeOffset.UtcNow)).ToList();
         var verified = 0;
         var contacted = new System.Collections.Concurrent.ConcurrentDictionary<string, byte>();
         using var workers = new SemaphoreSlim(ConcurrentSites);
-        await RunSites(initial).ConfigureAwait(false);
-        // A warm cache is an optimization, never a permanent allow-list. If it fails, expand again.
+        var regularSites = sites.Where(s => adOnly || onlySiteKey != null || SourceAdPolicy.Get(title, s.Key) != AdMark.Ads).ToList();
+        var regular = initial.Intersect(regularSites).ToList();
+        await RunSites(regular.OrderBy(s => SourceAdPolicy.Rank(title, s.Key))).ConfigureAwait(false);
+        // Previously working ad sources cannot make the warm cache exclude all unmarked alternatives.
         if (!ct.IsCancellationRequested && verified == 0)
-            await RunSites(sites.Except(initial).Where(s => !health.TryGetValue(s.Key, out var h) || h.Good || DateTimeOffset.UtcNow - h.CheckedAt >= TimeSpan.FromMinutes(30))).ConfigureAwait(false);
+            await RunSites(regularSites.Except(regular).Where(s => !health.TryGetValue(s.Key, out var h) || h.Good || DateTimeOffset.UtcNow - h.CheckedAt >= TimeSpan.FromMinutes(30))).ConfigureAwait(false);
+        if (!ct.IsCancellationRequested && verified == 0) await RunSites(sites.Except(regularSites)).ConfigureAwait(false);
         foreach (var cached in sites.Where(s => !contacted.ContainsKey(s.Key)))
             App.Post(() => { if (!ct.IsCancellationRequested) status(new(cached.Key, cached.Name, "已采用本集缓存；刷新可重新检测", false)); });
 
@@ -36,7 +39,14 @@ public static class SourceDiscovery
             catch (OperationCanceledException) { return; }
             try
             {
+                if (!SiteRegistry.Enabled(site.Key)) { App.Post(() => { if (!ct.IsCancellationRequested) status(new(site.Key, site.Name, "已停用", false)); }); return; }
                 contacted.TryAdd(site.Key, 0);
+                if (site.Type == InternationalSources.SiteType) {
+                    var candidates = await InternationalSources.FindAsync(site, title, episodeName, quality, ct).ConfigureAwait(false);
+                    foreach (var candidate in candidates) { Interlocked.Increment(ref verified); App.Post(() => { if (!ct.IsCancellationRequested && SiteRegistry.Enabled(site.Key)) found(candidate); }); }
+                    Notify(new(site.Key, site.Name, candidates.Count > 0 ? "媒体检测通过" : "未解析到可播放直链，未缓存为永久失败", candidates.Count > 0, candidates.FirstOrDefault()?.Flag.ProbeLatencyMs));
+                    return;
+                }
                 var details = new List<Vod>();
                 var names = CatalogIdentity.PlaybackNames(title).ToList();
                 if (site.Key == seedKey && !string.IsNullOrEmpty(seedId))
@@ -45,7 +55,7 @@ public static class SourceDiscovery
                     if (!string.IsNullOrEmpty(seed.GetMsg())) throw new IOException(seed.GetMsg());
                     details.AddRange(seed.List.Take(1));
                 }
-                var sawMatch = false;
+                var sawMatch = false; var mediaFailure = "";
                 var detailIds = new HashSet<string>();
                 foreach (var searchName in new[] { "" }.Concat(CatalogIdentity.PlaybackSearchNames(title)))
                 {
@@ -77,15 +87,15 @@ public static class SourceDiscovery
                             {
                                 var timer = System.Diagnostics.Stopwatch.StartNew(); bool playable;
                                 try { playable = await MediaProbe.CheckAsync(episode.Url, site.Header, ct, (url, height, bitrate) =>
-                                    { episode.Url = url; flag.ProbeHeight = height; flag.ProbeBitrate = bitrate; }, quality).ConfigureAwait(false); }
-                                catch (Exception) when (!ct.IsCancellationRequested) { playable = false; }
+                                    { episode.Url = url; flag.ProbeHeight = height; flag.ProbeBitrate = bitrate; }, quality, message => mediaFailure = message).ConfigureAwait(false); }
+                                catch (Exception) when (!ct.IsCancellationRequested) { playable = false; mediaFailure = "媒体检测超时/连接失败，可刷新重试"; }
                                 finally { flag.ProbeLatencyMs = timer.ElapsedMilliseconds; }
                                 if (!playable) continue;
                             }
                             flag.IsMediaVerified = direct; flag.SourceSite = site; flag.SourceVodId = match.Id;
                             flag.OriginalFlag = flag.Flag; flag.Flag = $"{site.Name} · {flag.Flag}";
                             ct.ThrowIfCancellationRequested(); Interlocked.Increment(ref verified);
-                            App.Post(() => { if (!ct.IsCancellationRequested) found(new(site, match, flag)); });
+                            App.Post(() => { if (!ct.IsCancellationRequested && SiteRegistry.Enabled(site.Key)) found(new(site, match, flag)); });
                             Notify(new(site.Key, site.Name, direct ? "媒体检测通过" : "交由播放器解析验证", direct, flag.ProbeLatencyMs));
                             return;
                         }
@@ -94,7 +104,7 @@ public static class SourceDiscovery
                 }
                 // Only an actual completed content search with no title match is negative-cached.
                 // A matched show's missing episode or failed URL may be a new upload, expiring link or network failure.
-                Notify(new(site.Key, site.Name, sawMatch ? "本集暂未检测到可播线路，可刷新重试" : "没有匹配的影片", false, NoMatch: !sawMatch));
+                Notify(new(site.Key, site.Name, sawMatch ? mediaFailure.Length > 0 ? "作品与集数已匹配；" + mediaFailure : "本集暂未检测到可播线路，可刷新重试" : "没有匹配的影片", false, NoMatch: !sawMatch));
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
             catch (Exception error) { Notify(new(site.Key, site.Name, error is OperationCanceledException ? "连接超时（未加入失败过滤）" : "连接暂不可用（未加入失败过滤）", false)); Logger.D("SourceDiscovery", site.Key + ": " + error.GetType().Name); }

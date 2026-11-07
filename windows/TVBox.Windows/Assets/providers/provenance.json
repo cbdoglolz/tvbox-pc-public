@@ -1,0 +1,23 @@
+[
+  {
+    "id": "nuvio_4khdhub",
+    "upstream": "https://github.com/yoruix/nuvio-providers/blob/ed38d1aee0024f56479369c9423fefb278e0b62a/providers/4khdhub.js",
+    "sha256": "5875c046d71173a77d5c332380983abdf58efafface5495c2b5817941678f77b",
+    "license": "GPL-3.0",
+    "modifications": "Remove upstream shared TMDB credential; use app-supplied public metadata; require exact title/year or exact anime mapping; do not load runtime scripts."
+  },
+  {
+    "id": "nuvio_anizone",
+    "upstream": "https://github.com/yoruix/nuvio-providers/blob/ed38d1aee0024f56479369c9423fefb278e0b62a/providers/anizone.js",
+    "sha256": "18c52ebb3616a0b3ec7dc5acd6bc59138eee70bed0debd0390e67b98e4d1160f",
+    "license": "GPL-3.0",
+    "modifications": "Remove upstream shared TMDB credential; use app-supplied public metadata; require exact title/year or exact anime mapping; do not load runtime scripts."
+  },
+  {
+    "id": "nuvio_vixsrc",
+    "upstream": "https://github.com/yoruix/nuvio-providers/blob/ed38d1aee0024f56479369c9423fefb278e0b62a/providers/vixsrc.js",
+    "sha256": "ab7e9432ee333c995341a6bdce0c48be0b7ef76aaf25e3b4bb5a7ccaac05366a",
+    "license": "GPL-3.0",
+    "modifications": "Remove upstream shared TMDB credential; use app-supplied public metadata; require exact title/year or exact anime mapping; do not load runtime scripts."
+  }
+]

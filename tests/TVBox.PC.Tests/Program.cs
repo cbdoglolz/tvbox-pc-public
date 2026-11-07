@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using TVBoxForWindows.Core;
+using TVBoxForWindows.Engine;
 using TVBoxForWindows.Models;
 using TVBoxForWindows.Player;
 
@@ -104,6 +105,7 @@ if (args.Contains("--danmaku-edgerunners-live")) {
     Console.WriteLine($"Provider={result.Provider}; libraryId={result.LibraryId}; parsed={engine.Items.Count}; firstMs={engine.Items.First().TimeMs}");
     Logger.Shutdown(); return;
 }
+foreach (var international in InternationalSources.Sites) SiteRegistry.Set(international.Key, new SitePreference { Enabled = false, Group = "isolated fixture" });
 await CatalogRegression.RunAsync(Require);
 Require(SubtitlePresentation.Text(null) == "", "subtitle clears between cues");
 Require(SubtitlePresentation.Text("{\\an8}<i>中文字幕</i>\\Nsecond &amp; line") == "中文字幕\nsecond & line", "ASS and SRT text presentation");
@@ -123,6 +125,7 @@ await CatalogV083Regression.RunAsync(Require);
 await CatalogV084Regression.RunAsync(Require);
 await CatalogV085Regression.RunAsync(Require);
 await CatalogV086Regression.RunAsync(Require);
+await CatalogV087Regression.RunAsync(Require);
 var bundled = await Decoder.GetJson(BuiltInSources.ConfigUrl);
 using (var catalog = JsonDocument.Parse(bundled))
 {

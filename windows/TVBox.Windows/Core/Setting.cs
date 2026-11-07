@@ -29,6 +29,7 @@ public static class Setting
         const string key = "migration_speed_init_20260727";
         lock (Sync)
         {
+            if (!GetBoolLocked("migration_danmaku_quarter_087")) { _map["danmaku_area"] = "25"; _map["migration_danmaku_quarter_087"] = "true"; SaveLocked(); }
             if (GetBoolLocked(key)) return false;
 
             var speed = GetFloatLocked("speed", 1f);
