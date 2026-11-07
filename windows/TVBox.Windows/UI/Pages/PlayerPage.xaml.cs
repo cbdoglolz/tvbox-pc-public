@@ -139,6 +139,7 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
         _closed = true;
         _attemptGeneration++;
         _discoveryCts?.Cancel();
+        CancelSourceRefresh();
         _isBuffering = false;
         HideLoading();
         _selectionMutationVersion++;
@@ -686,17 +687,18 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
         if (idx >= eps.Count) { ShowToast("已经是最后一集"); return; }
         SaveHistoryNow();
         _session.EpisodeIndex = idx;
+        CancelSourceRefresh();
         if (_session.History != null) _session.History.Position = 0;
         _triedFlags.Clear();
         _ = PlayCurrent(0);
     }
 
-    void SwitchFlag(int idx)
+    void SwitchFlag(int idx, long? preservedPosition = null)
     {
         if (_sourceTransitionInProgress && _catalogArgs == null) return;
         if (idx < 0 || idx >= _session.Flags.Count || idx == _session.FlagIndex) return;
         var name = _session.CurrentEpisode?.Name;
-        long pos = _core?.PositionMs ?? 0;
+        long pos = preservedPosition ?? ResumeProgress.SourceSwitchPosition(_core?.PositionMs ?? 0, _resumeAnchorMs, _displayPositionMs, _pendingSeekMs);
         SaveHistoryNow();
         var flag = _session.Flags[idx];
         var match = FindSameEpisode(flag, name);
@@ -765,6 +767,7 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
         if (idx == _session.EpisodeIndex) return; // 点当前集不重播
         SaveHistoryNow();
         _session.EpisodeIndex = idx;
+        CancelSourceRefresh();
         if (_session.History != null) _session.History.Position = 0;
         _triedFlags.Clear();
         _ = PlayCurrent(0);
@@ -990,10 +993,14 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
         if (e.ClickedItem is not PlayerSelectionItem item) return;
         var kind = _selectionKind;
         var value = item.Value;
+        // Freeze the intent before collapsing/rebinding the overlay. Reading the decoder after
+        // the deferred visual mutation can observe a reset or a slider/layout notification.
+        long? sourcePosition = kind == PlayerSelectionKind.Flag
+            ? ResumeProgress.SourceSwitchPosition(_core?.PositionMs ?? 0, _resumeAnchorMs, _displayPositionMs, _pendingSeekMs) : null;
         QueueSelectionMutation(() =>
         {
             CloseSelectionPanel();
-            CommitSelection(kind, value);
+            CommitSelection(kind, value, sourcePosition);
         });
     }
 
@@ -1011,7 +1018,7 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
             CommitMutation);
     }
 
-    void CommitSelection(PlayerSelectionKind kind, object value)
+    void CommitSelection(PlayerSelectionKind kind, object value, long? sourcePosition = null)
     {
         if (_closed) return;
         switch (kind)
@@ -1029,7 +1036,10 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
                 SaveHistoryNow();
                 break;
             case PlayerSelectionKind.Flag when value is int flagIndex:
-                SwitchFlag(flagIndex);
+                SwitchFlag(flagIndex, sourcePosition);
+                break;
+            case PlayerSelectionKind.Flag when value is PlaybackCandidate candidate:
+                SelectRefreshedCandidate(candidate, sourcePosition);
                 break;
             case PlayerSelectionKind.Subtitle when value is Sub subtitle:
                 _ = LoadSubtitle(subtitle);

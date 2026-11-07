@@ -57,6 +57,7 @@ public partial class PlayerCore : IDisposable
     bool _flyBuffering;
     int _videoFramesObservedGeneration;
     long _videoFrameBaseline;
+    readonly Models.PlaybackTimeline _timeline = new();
     public bool HasRenderedVideoFrame => Volatile.Read(ref _activePlaybackGeneration) > 0 &&
         Volatile.Read(ref _videoFramesObservedGeneration) == Volatile.Read(ref _openGeneration);
     public bool HasVerifiedResumeFrame(long targetMs)
@@ -180,6 +181,13 @@ public partial class PlayerCore : IDisposable
     void OnUiTimerTick(DispatcherQueueTimer sender, object args)
     {
         if (_disposed || Fly == null) return;
+        if (Fly.CanPlay && _item?.IsLive != true && DurationMs > 0 && Volatile.Read(ref _openingGeneration) == 0)
+        {
+            var previousCorrections = _timeline.Corrections;
+            var raw = RawPositionMs;
+            var position = _timeline.Observe(raw, Environment.TickCount64, IsPlaying && !IsBuffering, Speed);
+            if (_timeline.Corrections != previousCorrections) Core.Logger.D(TAG, $"已校正媒体时间戳跳变：raw={raw}，position={position}");
+        }
         SampleTransferRate();
         CheckSeekTimeout();
         ObserveVideoFrames();
@@ -284,8 +292,10 @@ public partial class PlayerCore : IDisposable
         }
         lock (_subtitleLock) _subtitlePending = null;
         var request = Snapshot(item);
+        var previousTimeline = _item?.Url == request.Url ? _timeline.Snapshot() : null;
         var generation = Interlocked.Increment(ref _openGeneration);
         ResetSeekRequests();
+        if (previousTimeline != null) _timeline.Restore(previousTimeline);
         ResetTransferSampling(true, generation);
         Volatile.Write(ref _activePlaybackGeneration, 0);
         _item = request;
@@ -314,7 +324,7 @@ public partial class PlayerCore : IDisposable
             Fly.Config.Demuxer.ReadTimeout = TimeSpan.FromMilliseconds(request.StartPositionMs > 5000 ? ResumeSeekTimeoutMs : Math.Max(Setting.PlayTimeout, 15000)).Ticks;
             ApplyFormat(request.Format);
             Fly.Config.Video.VideoAcceleration = Setting.Flag != 0;
-            Core.Logger.D(TAG, $"打开媒体 #{generation} {DescribeUrl(request.Url)}, format={request.Format ?? "auto"}, headers=[{string.Join(',', request.Headers.Keys)}]");
+            Core.Logger.D(TAG, $"打开媒体 #{generation} {DescribeUrl(request.Url)}, startMs={request.StartPositionMs}, format={request.Format ?? "auto"}, headers=[{string.Join(',', request.Headers.Keys)}]");
             Fly.OpenAsync(request.Url);
         }
         catch (Exception e)
@@ -345,10 +355,11 @@ public partial class PlayerCore : IDisposable
             Volatile.Read(ref _openingGeneration) != 0) return 0;
 
         var target = (int)Math.Min(int.MaxValue, Math.Max(0, ms));
+        var decoderTarget = (int)Math.Min(int.MaxValue, _timeline.BeginSeek(target));
         SeekRequest queued;
         lock (_seekLock)
         {
-            queued = new SeekRequest(++_seekRequestId, target, playbackGeneration);
+            queued = new SeekRequest(++_seekRequestId, target, decoderTarget, playbackGeneration);
             // Flyleaf's playing path already maintains a latest-wins seek stack.
             // Replacing our correlation record preserves that behavior instead of
             // serializing stale targets ahead of the user's newest request.
@@ -386,10 +397,10 @@ public partial class PlayerCore : IDisposable
         try
         {
             if (_item?.StartPositionMs > 0 && request.TargetMs == _item.StartPositionMs)
-                Fly.SeekAccurate(request.TargetMs);
+                Fly.SeekAccurate(request.DecoderTargetMs);
             else
                 // Timestamp seek to the preceding keyframe (no AVSEEK_FLAG_FRAME).
-                Fly.Seek(request.TargetMs, false);
+                Fly.Seek(request.DecoderTargetMs, false);
         }
         catch (Exception error)
         {
@@ -412,7 +423,7 @@ public partial class PlayerCore : IDisposable
         }
         // Playing seeks finish through the final BufferingCompleted event; paused seeks
         // report their exact target here. A stale callback cannot finish a newer target.
-        if (completedMs == request.TargetMs) QueueSeekCompletion(request, true);
+        if (completedMs == request.DecoderTargetMs) QueueSeekCompletion(request, true);
     }
 
     async Task CompleteSeekFailureAfterSettleAsync(SeekRequest request)
@@ -444,6 +455,7 @@ public partial class PlayerCore : IDisposable
             buffering = _flyBuffering;
         }
 
+        _timeline.EndSeek(success);
         SeekFinished?.Invoke(finished.Id, finished.TargetMs, success);
         if (!buffering) RaiseBufferingChanged(false);
     }
@@ -475,6 +487,7 @@ public partial class PlayerCore : IDisposable
 
     void ResetSeekRequests()
     {
+        _timeline.Reset();
         lock (_seekLock)
         {
             _seekRequestId++;
@@ -638,7 +651,8 @@ public partial class PlayerCore : IDisposable
         catch (Exception e) { Core.Logger.E(TAG, "Scale 失败: " + e.Message); }
     }
 
-    public long PositionMs { get { try { return Fly == null ? 0 : Fly.CurTime / 10000; } catch { return 0; } } }
+    long RawPositionMs { get { try { return Fly == null ? 0 : Fly.CurTime / 10000; } catch { return 0; } } }
+    public long PositionMs => _timeline.Read(RawPositionMs);
 
     public long DurationMs { get { try { return Fly == null ? 0 : Fly.Duration / 10000; } catch { return 0; } } }
 
@@ -949,6 +963,7 @@ public partial class PlayerCore : IDisposable
         Format = item.Format,
         Drm = item.Drm,
         StartPositionMs = item.StartPositionMs,
+        IsLive = item.IsLive,
         Subs = item.Subs?.ToList() ?? new List<Models.Sub>(),
         Danmaku = item.Danmaku?.ToList() ?? new List<Models.Danmaku>(),
     };
@@ -999,16 +1014,18 @@ public partial class PlayerCore : IDisposable
 
     sealed class SeekRequest
     {
-        public SeekRequest(long id, int targetMs, int playbackGeneration)
+        public SeekRequest(long id, int targetMs, int decoderTargetMs, int playbackGeneration)
         {
             Id = id;
             TargetMs = targetMs;
+            DecoderTargetMs = decoderTargetMs;
             PlaybackGeneration = playbackGeneration;
             CreatedTick = Environment.TickCount64;
         }
 
         public long Id { get; }
         public int TargetMs { get; }
+        public int DecoderTargetMs { get; }
         public int PlaybackGeneration { get; }
         public long CreatedTick { get; }
         public long StartedTick { get; set; }
@@ -1025,5 +1042,6 @@ public class PlayItem
     public string Format;                                // MIME 提示，可空
     public List<Models.Sub> Subs = new(); public Models.Drm Drm;  // ClearKey 之外 Windows 不支持 → 提示
     public long StartPositionMs;
+    public bool IsLive;
     public List<Models.Danmaku> Danmaku = new();         // 弹幕候选（契约 §5.3：Resolve 产出含 danmaku）
 }

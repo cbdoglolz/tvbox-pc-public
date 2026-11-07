@@ -65,7 +65,7 @@ public static class PlayResolver
         }
         headers.Remove("Range");
         url = PreparePlaybackRequest(url, headers);
-        return new Player.PlayItem { Url = url, Headers = headers, Format = channel.Format, Drm = channel.Drm };
+        return new Player.PlayItem { Url = url, Headers = headers, Format = channel.Format, Drm = channel.Drm, IsLive = true };
     }
 
     /// <summary>对齐 Android PlaySpec.checkUa + OkHttp ResponseInterceptor：转换内部协议、规范化 URI、

@@ -12,8 +12,8 @@ public static class PlaybackPresentation
         if (h == null || h.Position < 1000) return "";
         var time = TimeSpan.FromMilliseconds(h.Position);
         var season = Regex.Match(h.VodName ?? "", @"第\s*([一二三四五六七八九十百\d]+)\s*季|Season\s*(\d+)|\bS(\d+)\b", RegexOptions.IgnoreCase);
-        var explicitEpisode = Regex.Match(h.VodRemarks ?? "", @"(?:[Ee]|第\s*)(\d+)\s*(?:集)?");
-        var episode = explicitEpisode.Success ? explicitEpisode.Groups[1].Value : Regex.Match(h.VodRemarks ?? "", @"\d+").Value;
+        var number = EpisodeIdentity.Parse(h.VodRemarks).Number;
+        var episode = number >= 0 ? number.ToString() : "";
         if (episode.Length > 0) episode = episode.TrimStart('0') is { Length: > 0 } digits ? digits : "0";
         var label = h.CatalogKind == "movie" ? "" :
             (season.Success ? season.Value + " · " : "") + (episode.Length > 0 ? $"第{episode}集 · " : (!string.IsNullOrEmpty(h.VodRemarks) ? h.VodRemarks + " · " : ""));

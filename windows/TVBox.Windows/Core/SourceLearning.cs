@@ -22,24 +22,28 @@ public class SourcePerformance
 public static class SourceLearning
 {
     static readonly object Sync = new();
-    public static string EpisodeIdentity(string kind, string episode) => kind == "movie" ? "movie" : Math.Max(1, Player.DanmakuSearch.EpisodeNumber(episode)).ToString();
+    public static string EpisodeIdentity(string kind, string episode) => kind == "movie" ? "movie" : Models.EpisodeIdentity.Parse(episode).Number is >= 0 and var number ? number.ToString() : string.IsNullOrEmpty(episode) ? "1" : "label:" + Engine.TitleMatchRules.Normalize(episode);
     static string LegacyFileFor(CatalogItem work, string episode, int cid) => Path.Combine(AppPaths.Cache, "source-health",
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(cid + "|" + Engine.TitleMatchRules.Normalize(work.Title) + "|" + work.Year + "|" + work.Kind + "|" + EpisodeIdentity(work.Kind, episode)))) + ".json");
-    static string FileFor(CatalogItem work, string episode, int cid) => Path.Combine(AppPaths.Cache, "source-health",
+    static string PreviousFileFor(CatalogItem work, string episode, int cid) => Path.Combine(AppPaths.Cache, "source-health",
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("season-query-v2|" + work.WorkKey + "|" + cid + "|" + Engine.TitleMatchRules.Normalize(work.Title) + "|" + work.Year + "|" + work.Kind + "|" + EpisodeIdentity(work.Kind, episode)))) + ".json");
+    static string FileFor(CatalogItem work, string episode, int cid) => Path.Combine(AppPaths.Cache, "source-health",
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("episode-v3|" + work.WorkKey + "|" + Engine.TitleMatchRules.Normalize(work.Title) + "|" + work.Year + "|s:" + (work.SelectedSeason ?? Math.Max(1, Engine.CatalogIdentity.Season(work))) + "|" + cid + "|" + work.Kind + "|" + EpisodeIdentity(work.Kind, episode)))) + ".json");
     public static Dictionary<string, SourceHealth> Health(CatalogItem work, string episode, int cid)
     {
         lock (Sync) {
             var current = FileFor(work, episode, cid);
             if (File.Exists(current)) return DurableJsonFile.Read(current, JsonUtil.Deserialize<Dictionary<string, SourceHealth>>, () => new());
             // Keep proven sources, but do not let a negative result from the old season-query spelling suppress the corrected lookup.
-            var previous = DurableJsonFile.Read(LegacyFileFor(work, episode, cid), JsonUtil.Deserialize<Dictionary<string, SourceHealth>>, () => new());
+            var previous = DurableJsonFile.Read(PreviousFileFor(work, episode, cid), JsonUtil.Deserialize<Dictionary<string, SourceHealth>>, () => new());
+            foreach (var p in DurableJsonFile.Read(LegacyFileFor(work, episode, cid), JsonUtil.Deserialize<Dictionary<string, SourceHealth>>, () => new()))
+                if (!previous.ContainsKey(p.Key)) previous[p.Key] = p.Value;
             return previous.Where(p => p.Value.Good).ToDictionary(p => p.Key, p => p.Value);
         }
     }
     public static bool Eligible(Dictionary<string, SourceHealth> records, string key, DateTimeOffset now)
     {
-        var fresh = records.Where(p => now - p.Value.CheckedAt < TimeSpan.FromDays(7)).ToDictionary(p => p.Key, p => p.Value);
+        var fresh = records.Where(p => now - p.Value.CheckedAt < (p.Value.Good ? TimeSpan.FromDays(7) : TimeSpan.FromMinutes(30))).ToDictionary(p => p.Key, p => p.Value);
         if (fresh.Values.Any(v => v.Good)) return fresh.TryGetValue(key, out var item) && item.Good;
         return !fresh.TryGetValue(key, out var failed) || failed.Good;
     }

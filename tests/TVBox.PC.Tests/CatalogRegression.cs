@@ -134,7 +134,7 @@ internal static class CatalogRegression
         };
         statuses = new();
         await SourceDiscovery.RunAsync(new CatalogItem { Title = "测试电影" }, "", "", "", "", _ => { }, statuses.Add, default);
-        require(maximum <= 3 && statuses.Count == 32, "32 sources bounded to three concurrent searches");
+        require(maximum == 10 && statuses.Count == 32, "32 sources use ten concurrent site workers with an enforced upper bound");
         using var cancellation = new CancellationTokenSource(20);
         SiteService.Search = async (_, _) => { await Task.Delay(300); return new Result(); };
         var lateCallbacks = 0;

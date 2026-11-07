@@ -6,6 +6,12 @@
     <Nullable>disable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../../windows/TVBox.Windows/Models/EpisodeIdentity.cs" Link="Models/EpisodeIdentity.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Models/PlaybackTimeline.cs" Link="Models/PlaybackTimeline.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Core/ReleaseUpdate.cs" Link="Core/ReleaseUpdate.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Core/UpdateInstaller.cs" Link="Core/UpdateInstaller.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Core/ServiceCredentials.cs" Link="Core/ServiceCredentials.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Models/DanmakuService.cs" Link="Models/DanmakuService.cs"/>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.22"/>
     <Compile Include="../../windows/TVBox.Windows/Engine/CatalogArtworkResolver.cs" Link="Engine/CatalogArtworkResolver.cs"/>
     <Compile Include="../../windows/TVBox.Windows/Engine/WorkMediaService.cs" Link="Engine/WorkMediaService.cs"/>

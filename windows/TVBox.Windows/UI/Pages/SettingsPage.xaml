@@ -52,6 +52,17 @@
         <StackPanel MaxWidth="880" Padding="24" Spacing="16" HorizontalAlignment="Stretch">
             <TextBlock Text="设置" FontSize="28" FontWeight="SemiBold"/>
             <StackPanel Style="{StaticResource CardPanel}">
+                <TextBlock Text="软件更新" Style="{StaticResource CardTitle}"/>
+                <TextBlock x:Name="UpdateStatusText" Text="从公开GitHub稳定版检查更新；下载校验后再安装，保留个人资料。" Style="{StaticResource RowDesc}"/>
+                <ProgressBar x:Name="UpdateDownloadProgress" Visibility="Collapsed" Minimum="0" Maximum="100"/>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button x:Name="CheckUpdateButton" Content="检查更新" Click="OnCheckUpdate"/>
+                    <Button x:Name="DownloadUpdateButton" Content="下载新版本" Visibility="Collapsed" Click="OnDownloadUpdate"/>
+                    <Button x:Name="InstallUpdateButton" Content="退出并安装更新" Visibility="Collapsed" Click="OnInstallUpdate"/>
+                    <HyperlinkButton Content="版本与下载" NavigateUri="https://github.com/cbdoglolz/tvbox-pc-public/releases/latest"/>
+                </StackPanel>
+            </StackPanel>
+            <StackPanel Style="{StaticResource CardPanel}">
                 <TextBlock Text="外观与海报操作" Style="{StaticResource CardTitle}"/>
                 <ComboBox x:Name="ThemeCombo" Header="主题" SelectionChanged="OnThemeChanged" HorizontalAlignment="Left">
                     <ComboBoxItem Content="奈飞 · 蓝黑紫"/><ComboBoxItem Content="豆瓣 · 纯白"/>
@@ -362,6 +373,17 @@
                     <TextBox x:Name="DanmakuApiBox" PlaceholderText="https://你的服务/api/v2/"/>
                     <Button Content="保存弹幕服务" Click="OnSaveDanmakuApi"/>
                     <TextBlock x:Name="DanmakuApiStatus" TextWrapping="Wrap" Style="{StaticResource RowDesc}"/>
+                    <ToggleSwitch x:Name="DanmakuBiliToggle" Header="B站正片弹幕（无需个人Key）" Toggled="OnDanmakuBiliToggled"/>
+                    <TextBlock Text="附加弹幕服务（按列表顺序自动尝试）" FontWeight="SemiBold"/>
+                    <TextBlock Text="公共代理不保证覆盖每部片子。弹弹play官方API需要自行申请AppId/AppSecret；自建聚合服务可对接更多平台。地址和密钥仅加密保存在本机。" Style="{StaticResource RowDesc}"/>
+                    <StackPanel x:Name="DanmakuServicesList" Spacing="6"/>
+                    <ComboBox x:Name="DanmakuServiceType" Header="服务类型" SelectedIndex="0" SelectionChanged="OnDanmakuServiceTypeChanged"><ComboBoxItem Content="自定义兼容聚合服务"/><ComboBoxItem Content="弹弹play官方API"/></ComboBox>
+                    <TextBox x:Name="DanmakuServiceName" Header="显示名称" MaxLength="80"/>
+                    <TextBox x:Name="DanmakuServiceUrl" Header="服务地址" PlaceholderText="https://你的服务/api/v2/"/>
+                    <TextBox x:Name="DanmakuOfficialAppId" Header="官方AppId（仅官方API需要）"/>
+                    <PasswordBox x:Name="DanmakuOfficialSecret" Header="官方AppSecret" PasswordRevealMode="Hidden"/>
+                    <Button Content="添加并启用" Click="OnAddDanmakuService"/>
+                    <StackPanel Orientation="Horizontal" Spacing="4"><HyperlinkButton Content="官方API申请说明" NavigateUri="https://doc.dandanplay.com/open/"/><HyperlinkButton Content="自建聚合：danmaku" NavigateUri="https://github.com/tamersunion/danmaku"/><HyperlinkButton Content="自建聚合：danmuapi" NavigateUri="https://github.com/canmo101/danmuapi"/></StackPanel>
                 </StackPanel>
 
                 <Grid>

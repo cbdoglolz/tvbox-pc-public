@@ -109,6 +109,15 @@ public sealed class CatalogQueryProvider(MetadataHttp http = null, MetadataStore
             writes.Add(("response", cacheKey, output, TimeSpan.FromMinutes(30))); Store.WriteBatch(writes.ToArray()); return output;
         }
         catch (OperationCanceledException) { throw; }
+        catch (MetadataServiceException) when (query.Provider == "douban" && query.Keyword.Trim().Length > 0 && query.PersonId == 0 && query.Collection.Length == 0 && TmdbCredentials.HasCredential)
+        {
+            // Search can fail independently of home feeds. Keep the caller's filters and rating provider;
+            // TMDB candidates retain their own identity and ratings rather than masquerading as Douban.
+            var fallback = query.Copy(); fallback.Provider = "tmdb";
+            var pages = await Task.WhenAll(query.Kinds.Select(k => FetchAsync(fallback, k, page, country, ct)));
+            return new(pages.SelectMany(p => p.Items).DistinctBy(w => w.WorkKey).ToList(), pages.Any(p => p.HasMore), null,
+                "豆瓣搜索暂不可用，已回退TMDB；保留原筛选，豆瓣评分未知的作品不满足豆瓣分数条件");
+        }
         catch when (cache != null) { return cache.Value with { IsStale = true, ScopeNote = cache.Value.ScopeNote + "；服务暂不可用，使用过期缓存" }; }
     }
     public async Task<CatalogItem> DetailsAsync(CatalogItem work, CancellationToken ct)

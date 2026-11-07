@@ -23,6 +23,9 @@ public sealed partial class PlayerPage
         finally { _menuOpen = Math.Max(0, _menuOpen - 1); if (!_closed) ShowControls(); }
     }
     CancellationTokenSource _discoveryCts;
+    CancellationTokenSource _refreshSourcesCts;
+    List<PlaybackCandidate> _refreshedCandidates;
+    bool _refreshingSources;
     readonly Dictionary<string, DiscoveryStatus> _sourceStatuses = new();
     bool _catalogStarted, _discoveryDone, _waitingForCandidate;
     long _resumeAnchorMs;
@@ -82,7 +85,7 @@ public sealed partial class PlayerPage
             _discoveryDone = false;
             _waitingForCandidate = false;
             var cts = _discoveryCts = new CancellationTokenSource();
-            ShowLoading("正在搜索并依次检测播放源…", false);
+            ShowLoading("正在并发检测播放源（最多10站）…", false);
             _resumeSiteKey = args.ManualSource ? args.SeedSiteKey : args.ForceReselect ? "" : string.IsNullOrEmpty(history.SourceKey) ? args.SeedSiteKey : history.SourceKey;
             if (!string.IsNullOrEmpty(_resumeSiteKey))
             {
@@ -151,9 +154,12 @@ public sealed partial class PlayerPage
         if (_updatingPreference || SourcePreferenceCombo.SelectedIndex < 0) return;
         Setting.SourcePreference = SourcePreferenceCombo.SelectedIndex == 1 ? "quality" : "speed";
         RefreshRequiredBadge.Visibility = Setting.SourcePreference == _appliedPreference ? Visibility.Collapsed : Visibility.Visible;
-        UiHints.Explain(RecheckSourcesButton, RefreshRequiredBadge.Visibility == Visibility.Visible ? "偏好已修改：点击立即刷新，按新顺序重新选源并保留进度" : "重新测试播放源，保留本片本集进度");
+        UiHints.Explain(RecheckSourcesButton, "后台检测本片本季本集的10个并发来源；当前视频继续播放，完成后自行选择切换");
         ShowToast("选源偏好已保存，点击右侧刷新图标立即应用");
     }
+
+    void OnPreferenceMenuOpened(object sender, object e) { _menuOpen++; ShowControls(); }
+    void OnPreferenceMenuClosed(object sender, object e) { _menuOpen = Math.Max(0, _menuOpen - 1); if (!_closed) ShowControls(); }
 
     bool TryNextCandidate()
     {
@@ -183,7 +189,7 @@ public sealed partial class PlayerPage
     {
         if (flag == null) return null;
         if (_catalogArgs == null) return flag.Find(name, false);
-        var match = flag.Find(name, true);
+        var match = SourceDiscovery.FindEpisode(flag, _session.Catalog, name);
         if (match == null && _session.Catalog?.Kind == "movie") match = flag.Episodes.FirstOrDefault();
         if (match == null && Episode.Digit(name) < 0 && flag.Episodes.Count == 1) match = flag.Episodes[0];
         return match;
@@ -212,6 +218,13 @@ public sealed partial class PlayerPage
     IEnumerable<PlayerSelectionItem> SourceSelectionItems()
     {
         var items = new List<PlayerSelectionItem>();
+        if (_refreshedCandidates != null)
+        {
+            foreach (var candidate in _refreshedCandidates.OrderByDescending(c => Setting.SourcePreference == "quality" ? c.Flag.ProbeHeight : 0).ThenBy(c => c.Flag.ProbeLatencyMs ?? long.MaxValue))
+                items.Add(new(candidate.Flag.Flag + (candidate.Flag.ProbeHeight > 0 ? $" · {candidate.Flag.ProbeHeight}p" : " · 画质待解码确认"), candidate, false)
+                { Detail = PlaybackPresentation.Delay(candidate.Flag.ProbeLatencyMs), DetailColor = PlaybackPresentation.DelayColor(candidate.Flag.ProbeLatencyMs) });
+            return items;
+        }
         foreach (var index in PlaybackPresentation.OrderFlags(_session.Flags, Setting.SourcePreference == "quality"))
         {
             var flag = _session.Flags[index];
@@ -265,12 +278,71 @@ public sealed partial class PlayerPage
         ShowToast(existing == null ? "已收藏" : "未收藏");
     }
 
-    void OnRetryDiscovery(object sender, RoutedEventArgs e)
+    async void OnRetryDiscovery(object sender, RoutedEventArgs e)
     {
-        if (_catalogArgs == null) return;
+        if (_catalogArgs == null || _refreshingSources) return;
         SaveHistoryNow();
-        var args = new TVBoxForWindows.UI.PlayerArgs { Catalog = _session.Catalog.Copy(), EpisodeName = _session.CurrentEpisode?.Name, ForceReselect = true };
-        DispatcherQueue.TryEnqueue(() => App.Main.OpenPlayer(args));
+        _discoveryCts?.Cancel(); _discoveryDone = true; _additionalSourcesStarted = true;
+        CancelSourceRefresh();
+        var cts = _refreshSourcesCts = new CancellationTokenSource();
+        var work = _session.Catalog.Copy(); var episode = _session.CurrentEpisode?.Name ?? _requestedEpisode;
+        var preference = Setting.SourcePreference;
+        _refreshedCandidates = new(); _refreshingSources = true; RecheckSourcesButton.IsEnabled = false;
+        RefreshRequiredBadge.Visibility = Visibility.Collapsed;
+        DiscoveryStatusText.Text = "后台10站并发检测中；当前视频继续播放，不会自动切换…";
+        var checkedCount = 0;
+        ShowToast("当前播放保留。检测完成后，请从成功来源列表选择切换");
+        try
+        {
+            await SourceDiscovery.RunAsync(work, null, null, null, episode, candidate =>
+            {
+                if (_closed || cts.IsCancellationRequested) return;
+                if (candidate.Flag.IsMediaVerified) _refreshedCandidates.Add(candidate);
+                if (_selectionKind == PlayerSelectionKind.Flag) RefreshSelectionPanel();
+            }, update =>
+            {
+                if (_closed || cts.IsCancellationRequested) return;
+                checkedCount++; _sourceStatuses[update.SourceKey] = update;
+                DiscoveryStatusText.Text = $"后台检测 {checkedCount} 站 · {_refreshedCandidates.Count} 个成功来源；当前播放保留";
+            }, cts.Token, ignoreCache: true, preference: preference);
+            // SourceDiscovery posts ordered UI callbacks; yield to the dispatcher before reading the completed list.
+            await Task.Yield();
+            if (_closed || cts.IsCancellationRequested) return;
+            _appliedPreference = preference;
+            RefreshRequiredBadge.Visibility = Setting.SourcePreference == preference ? Visibility.Collapsed : Visibility.Visible;
+            DiscoveryStatusText.Text = $"检测完成 · {_refreshedCandidates.Count} 个成功来源；点击底部线路选择，当前播放保留";
+            if (_refreshedCandidates.Count > 0) OpenSelectionPanel(PlayerSelectionKind.Flag, RecheckSourcesButton);
+            else { _refreshedCandidates = null; ShowToast("本次未检测到新来源，保留当前播放和原线路"); }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception error) { if (!_closed && !cts.IsCancellationRequested) { _refreshedCandidates = null; ShowToast("检测暂时失败，当前播放保留"); Logger.D(TAG, "后台选源：" + error.GetType().Name); } }
+        finally { if (ReferenceEquals(_refreshSourcesCts, cts)) { _refreshingSources = false; RecheckSourcesButton.IsEnabled = true; } }
+    }
+
+    void CancelSourceRefresh()
+    {
+        _refreshSourcesCts?.Cancel(); _refreshSourcesCts = null;
+        _refreshedCandidates = null; _refreshingSources = false;
+        RecheckSourcesButton.IsEnabled = true;
+    }
+
+    void SelectRefreshedCandidate(PlaybackCandidate candidate, long? preservedPosition = null)
+    {
+        if (candidate == null || _refreshedCandidates?.Contains(candidate) != true) return;
+        var episode = SourceDiscovery.FindEpisode(candidate.Flag, _session.Catalog, _session.CurrentEpisode?.Name ?? _requestedEpisode);
+        if (episode == null) { ShowToast("该来源已没有对应本集，请重新检测"); return; }
+        var decoderPosition = Math.Max(0, _core?.PositionMs ?? 0);
+        var position = preservedPosition ?? ResumeProgress.SourceSwitchPosition(decoderPosition, _resumeAnchorMs, _displayPositionMs, _pendingSeekMs);
+        Logger.D(TAG, $"应用检测来源 {candidate.Site.Key}：定位={position}，解码={decoderPosition}，已验证={_resumeAnchorMs}，显示={_displayPositionMs}");
+        SaveHistoryNow();
+        // Replace this site's old variant only after an explicit choice. Do not grow duplicate source rows.
+        var index = _session.Flags.FindIndex(f => f.SourceSite?.Key == candidate.Site.Key && f.OriginalFlag == candidate.Flag.OriginalFlag);
+        if (index < 0) { index = _session.Flags.Count; _session.Flags.Add(candidate.Flag); }
+        else _session.Flags[index] = candidate.Flag;
+        _session.FlagIndex = index; _session.EpisodeIndex = candidate.Flag.Episodes.IndexOf(episode); _session.Site = candidate.Site;
+        _triedFlags.Clear(); CancelSourceRefresh(); UpdateFlagUi();
+        _catalogStarted = true; _waitingForCandidate = false;
+        _ = PlayCurrent(position > 5000 ? position : 0);
     }
 
     async void EnsureAdditionalSources()

@@ -79,6 +79,7 @@ public sealed partial class SettingsPage : Page
         DanmakuAutoToggle.IsOn = Setting.DanmakuAuto;
         DanmakuRelayToggle.IsOn = Setting.GetBool("danmaku_builtin_relay", true);
         DanmakuApiBox.Text = Setting.DanmakuApi;
+        LoadDanmakuServices();
         RefreshDanmakuApiStatus();
         CacheAutoToggle.IsOn = Setting.GetBool("cache_auto_clean", true);
         CacheLimitCombo.SelectedIndex = Math.Max(0, Array.IndexOf(new[] { 256, 512, 1024, 2048 }, Setting.GetInt("cache_limit_mb", 1024)));

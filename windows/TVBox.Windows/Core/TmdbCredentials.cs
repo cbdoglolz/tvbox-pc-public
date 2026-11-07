@@ -29,7 +29,7 @@ public static class TmdbCredentials
         catch { return ""; }
     }
     public static void Clear() { if (File.Exists(CredentialPath)) File.Delete(CredentialPath); }
-    static byte[] Transform(byte[] data, bool protect)
+    internal static byte[] Transform(byte[] data, bool protect)
     {
         var input = new Blob { Count = data.Length, Data = Marshal.AllocHGlobal(data.Length) }; Blob output = default;
         try

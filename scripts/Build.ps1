@@ -15,6 +15,8 @@ Push-Location $repo
 try {
     & $sdk run --project tests\TVBox.PC.Tests\TVBox.PC.Tests.csproj -c Release
     if ($LASTEXITCODE -ne 0) { throw 'Persistence regression checks failed.' }
+    python (Join-Path $PSScriptRoot 'test_update_installer.py')
+    if ($LASTEXITCODE -ne 0) { throw 'Portable update/rollback regression checks failed.' }
     & $sdk restore $project -r win-x64
     if ($LASTEXITCODE -ne 0) { throw 'Dependency restore failed.' }
     & $sdk build $project -c Release -p:Platform=x64 -r win-x64 --no-restore -warnaserror

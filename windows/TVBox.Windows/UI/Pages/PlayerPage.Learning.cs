@@ -18,9 +18,10 @@ public sealed partial class PlayerPage
     void RecordSourceFailure()
     {
         if (_sourceFailureRecorded) return; _sourceFailureRecorded = true;
-        var site = _session?.CurrentSite; var work = _session?.Catalog; var episode = _session?.CurrentEpisode?.Name; var cid = VodConfigService.Cid;
+        var site = _session?.CurrentSite;
         if (site == null) return;
-        _ = Task.Run(() => { SourceLearning.Record(site.Key, site.Name, "failure", ""); if (work != null) SourceLearning.Remember(work, episode, cid, site.Key, false); });
+        // Decoder/network startup failures are transient, not evidence that this site's episode is absent.
+        _ = Task.Run(() => SourceLearning.Record(site.Key, site.Name, "failure", ""));
     }
     void RecordSourceSuccess()
     {

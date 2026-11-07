@@ -1,10 +1,10 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [ValidateSet("x64")]
     [string]$Architecture = "x64",
 
     [ValidatePattern("^\d+\.\d+\.\d+$")]
-    [string]$Version = "0.8.5",
+    [string]$Version = "0.8.6",
 
     [string]$OutputRoot = "",
 
@@ -310,7 +310,7 @@ function Test-ReleaseContent {
 
     $badFiles = Get-ChildItem -LiteralPath $Root -Recurse -File | Where-Object {
         $forbiddenNames -contains $_.Name.ToLowerInvariant() -or
-        $_.Name -like 'tmdb.credential*' -or $_.Name -like 'metadata-v4*.sqlite*' -or
+        $_.Name -like '*.credential*' -or $_.Name -like 'metadata-v4*.sqlite*' -or
         $forbiddenExtensions -contains $_.Extension.ToLowerInvariant()
     }
     if ($badFiles) {

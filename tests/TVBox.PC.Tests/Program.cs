@@ -72,6 +72,25 @@ if (args.Contains("--artwork-live")) {
     Console.WriteLine($"Live poster language={work.PosterLanguage}, artworkSchema={work.ArtworkSchema}, image={work.Poster}; logoLanguage={work.TitleLogoLanguage}; logo={work.TitleLogo}; backdrop={work.Backdrop}; directors={work.Crew.Count}");
     Logger.Shutdown(); return;
 }
+if (args.Contains("--validate-update-package")) {
+    ReleaseUpdate.ExtractCleanPackage(Path.GetFullPath("artifacts/TVBox-x64-0.8.5.zip"), Path.Combine(root, "extracted"));
+    Require(File.Exists(Path.Combine(root, "extracted", "libs", "TVBox.dll")), "real public package passes complete updater layout validation");
+    Logger.Shutdown(); return;
+}
+if (args.Contains("--updater-live")) {
+    var updates = new ReleaseUpdate(new HttpClient { Timeout = TimeSpan.FromMinutes(15) });
+    var release = await updates.CheckAsync("0.8.4", default);
+    Require(release != null && release.Version == "0.8.5", "live updater reads the real public stable release");
+    var stage = await updates.DownloadAsync(release, Path.GetFullPath(".tools/v086-live-update-download"), null, default);
+    Require(File.Exists(Path.Combine(stage.Directory, "TVBox.exe")) && File.Exists(Path.Combine(stage.Directory, "runtime", "host", "fxr", "9.0.22", "hostfxr.dll")), "live updater verifies and stages the complete public portable package");
+    File.WriteAllText(".tools/v086-live-update-ready.json", JsonUtil.Serialize(stage));
+    Logger.Shutdown(); return;
+}
+if (args.Contains("--danmaku-shawshank-live")) {
+    var result = await new DanmakuSearch().SearchAsync(new CatalogItem { Title = "肖申克的救赎", OriginalTitle = "The Shawshank Redemption", Kind = "movie", Year = "1994" }, "正片", "", CancellationToken.None);
+    var engine = new DanmakuEngine(); await engine.LoadAsync(result.Text);
+    Console.WriteLine(result.Message + " / parsed=" + engine.Items.Count); Logger.Shutdown(); return;
+}
 if (args.Contains("--danmaku-live")) {
     var result = await new DanmakuSearch().SearchAsync(new CatalogItem { Title = "武林外传", Kind = "movie", Year = "2011" }, "第1集", "", CancellationToken.None);
     var engine = new DanmakuEngine(); await engine.LoadAsync(result.Text);
@@ -103,6 +122,7 @@ await CatalogV082Regression.RunAsync(Require);
 await CatalogV083Regression.RunAsync(Require);
 await CatalogV084Regression.RunAsync(Require);
 await CatalogV085Regression.RunAsync(Require);
+await CatalogV086Regression.RunAsync(Require);
 var bundled = await Decoder.GetJson(BuiltInSources.ConfigUrl);
 using (var catalog = JsonDocument.Parse(bundled))
 {

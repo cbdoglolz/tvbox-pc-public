@@ -51,9 +51,6 @@ public static class TitleMatchRules
         if (position <= 0) return 0;
         if (kind == "movie") return position;
         if (string.IsNullOrEmpty(requestedEpisode) || savedEpisode == requestedEpisode) return position;
-        var savedNumber = Regex.Match(savedEpisode ?? "", @"\d+").Value;
-        var requestedNumber = Regex.Match(requestedEpisode ?? "", @"\d+").Value;
-        if (int.TryParse(savedNumber, out var saved) && int.TryParse(requestedNumber, out var requested) && saved == requested) return position;
-        return kind == "movie" && savedNumber.Length == 0 && requestedNumber.Length == 0 ? position : 0;
+        return Models.EpisodeIdentity.Parse(savedEpisode).Matches(Models.EpisodeIdentity.Parse(requestedEpisode)) ? position : 0;
     }
 }

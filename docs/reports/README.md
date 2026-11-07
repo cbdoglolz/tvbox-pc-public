@@ -4,6 +4,7 @@
 
 | 交付版本 | 报告范围 | 日期 | 文件 |
 | --- | --- | --- | --- |
+| 0.8.6 | 公开纯净发行/在线更新、统一季集、10站并发、保留播放刷新、弹幕日期及服务 | 2026-11-07 | [本次更新报告](TVBox-PC-v0.8.6-Update-Report.md) |
 | 0.8.5 | 解锁后原生验收、分季搜索/负缓存、横幅队列与重试、失败停止转圈、缺Logo兜底 | 2026-11-07 | [本次更新报告](TVBox-PC-v0.8.5-Update-Report.md) |
 | 0.8.4 预览 | 紧凑横幅、跨启动图片缓存、连续详情/季与单集、类型优先推荐、图片续播 | 2026-11-07 | [本次更新报告](TVBox-PC-v0.8.4-Update-Report.md) |
 | 0.8.3 | 中文海报首帧、背景/艺术标题、TMDB校正、导演与高清资源设计 | 2026-11-07 | [本次更新报告](TVBox-PC-v0.8.3-Update-Report.md) |
@@ -17,4 +18,4 @@
 | 0.4.0 | 分类检索、分平台资料与评分、可选Key、小雅延期边界 | 2026-11-06 | [本次更新报告](TVBox-PC-v0.4.0-Update-Report.md) |
 | 0.3.0 | 首次累计汇总：0.1.0～0.3.0 | 2026-11-06 | [开发汇总报告](TVBox-PC-v0.3.0-Update-Report.md) |
 
-详细验收记录：[0.1.0](../ACCEPTANCE-0.1.0.md)、[0.2.0](../ACCEPTANCE-0.2.0.md)、[0.3.0](../ACCEPTANCE-0.3.0.md)、[0.4.0](../ACCEPTANCE-0.4.0.md)、[0.5.0](../ACCEPTANCE-0.5.0.md)、[0.6.0](../ACCEPTANCE-0.6.0.md)、[0.7.0](../ACCEPTANCE-0.7.0.md)、[0.8.0](../ACCEPTANCE-0.8.0.md)、[0.8.1](../ACCEPTANCE-0.8.1.md)、[0.8.2](../ACCEPTANCE-0.8.2.md)、[0.8.3](../ACCEPTANCE-0.8.3.md)、[0.8.4](../ACCEPTANCE-0.8.4.md)。
+详细验收记录：[0.1.0](../ACCEPTANCE-0.1.0.md)、[0.2.0](../ACCEPTANCE-0.2.0.md)、[0.3.0](../ACCEPTANCE-0.3.0.md)、[0.4.0](../ACCEPTANCE-0.4.0.md)、[0.5.0](../ACCEPTANCE-0.5.0.md)、[0.6.0](../ACCEPTANCE-0.6.0.md)、[0.7.0](../ACCEPTANCE-0.7.0.md)、[0.8.0](../ACCEPTANCE-0.8.0.md)、[0.8.1](../ACCEPTANCE-0.8.1.md)、[0.8.2](../ACCEPTANCE-0.8.2.md)、[0.8.3](../ACCEPTANCE-0.8.3.md)、[0.8.4](../ACCEPTANCE-0.8.4.md)、[0.8.5](../ACCEPTANCE-0.8.5.md)。

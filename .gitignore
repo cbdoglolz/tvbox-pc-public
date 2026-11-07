@@ -24,5 +24,6 @@ TestResults/
 *.p12
 *.key
 **/tmdb.credential*
+**/services.credential*
 **/metadata-v4*.sqlite*
 **/source-statistics.json

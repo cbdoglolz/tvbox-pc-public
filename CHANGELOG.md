@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## TVBox PC 0.8.6 - 2026-11-07
+
+- Add a public stable-release updater with streamed SHA-256 verification, clean extraction, normal exit, file backup and rollback; preserve independent user profiles.
+- Share season/episode parsing across playback, resume, health cache and danmaku; use ten site workers including probes, avoid caching transient errors and expand failed positive caches.
+- Recheck source preferences in the background without replacing the playing session; freeze position before explicit source selection. Normalize discontinuous VOD timestamps across injected-ad segments without overriding user seeks.
+- Fall back from unavailable Douban keyword search to optional TMDB without substituting rating filters; support encrypted optional danmaku endpoints and official signed API requests.
+- Correct Bilibili original release date versus platform publication date; real Shawshank comments obtained. Full evidence and remaining integrations are in the independent report.
+
 ## TVBox PC 0.8.5 - 2026-11-07
 
 - Search Chinese season ordinals and bounded base-title variants while retaining strict title/year/season validation; preserve positive legacy source health and bypass obsolete negative spellings.

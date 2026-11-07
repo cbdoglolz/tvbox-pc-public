@@ -15,7 +15,7 @@ with zipfile.ZipFile(package) as archive:
     roots = {name.replace("\\", "/").split("/")[0] for name in names}
     assert len(roots) == 1, "Expected one portable directory"
     prefix = roots.pop() + "/"
-    assert not any(Path(name).name.lower() in forbidden or Path(name).name.lower().startswith(('tmdb.credential', 'metadata-v4')) for name in names), "User data leaked into package"
+    assert not any(Path(name).name.lower() in forbidden or '.credential' in Path(name).name.lower() or Path(name).name.lower().startswith('metadata-v4') for name in names), "User data leaked into package"
     assert len([n for n in names if n.endswith("/TVBox.exe")]) == 1, "Duplicate app entry"
     for required in ["TVBox.exe", "libs/TVBox.dll", "libs/e_sqlite3.dll", "libs/Microsoft.Data.Sqlite.dll", "libs/Microsoft.ui.xaml.dll", "libs/Microsoft.UI.Xaml.Phone.dll", "libs/Microsoft.UI.pri", "libs/Microsoft.UI.Xaml.Controls.pri", "libs/zh-CN/Microsoft.ui.xaml.dll.mui", "assets/icons/douban.png", "assets/icons/netflix.svg", "assets/icons/netflix-wordmark.svg", "assets/catalog/default.json", "LICENSE", "README.md", "docs/ACCEPTANCE.md", "docs/UPSTREAM.md", "THIRD-PARTY-NOTICES.md", "ffmpeg/avcodec-62.dll"]:
         assert prefix + required in names, f"Missing {required}"

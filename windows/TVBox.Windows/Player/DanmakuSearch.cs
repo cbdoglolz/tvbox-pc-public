@@ -54,8 +54,7 @@ public sealed class DanmakuSearch(HttpClient client = null)
     }
     public static int EpisodeNumber(string label)
     {
-        var explicitEpisode = Regex.Match(label ?? "", @"(?:[Ee]|第\s*)(\d+)\s*(?:集|话|話)?");
-        return explicitEpisode.Success && int.TryParse(explicitEpisode.Groups[1].Value, out var n) ? n : Episode.Digit(label);
+        return EpisodeIdentity.Parse(label).Number;
     }
     public static JsonNode SelectEpisode(JsonArray episodes, string episode, string kind)
     {
@@ -88,6 +87,15 @@ public sealed class DanmakuSearch(HttpClient client = null)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.TryAddWithoutValidation("User-Agent", new Uri(url).Host == new Uri(BuiltInRelay).Host ? "TVBoxPC/0.8.2" : "Mozilla/5.0");
+        if (request.RequestUri.Host == "api.dandanplay.net")
+        {
+            var account = DanmakuService.All().FirstOrDefault(p => p.Official && p.Enabled && p.AppId.Length > 0 && p.AppSecret.Length > 0);
+            if (account == null) throw new IOException("弹弹play官方API未配置AppId/AppSecret");
+            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            request.Headers.TryAddWithoutValidation("X-AppId", account.AppId);
+            request.Headers.TryAddWithoutValidation("X-Timestamp", timestamp.ToString(System.Globalization.CultureInfo.InvariantCulture));
+            request.Headers.TryAddWithoutValidation("X-Signature", DanmakuService.Signature(account.AppId, timestamp, request.RequestUri.AbsolutePath, account.AppSecret));
+        }
         if (new Uri(url).Host.EndsWith("bilibili.com", StringComparison.OrdinalIgnoreCase)) {
             request.Headers.TryAddWithoutValidation("Referer", "https://www.bilibili.com/");
             if (_biliBuvid?.Length > 0) request.Headers.TryAddWithoutValidation("Cookie", "buvid3=" + _biliBuvid);
@@ -110,7 +118,7 @@ public sealed class DanmakuSearch(HttpClient client = null)
     public Task<string> LoadUrl(string url, CancellationToken ct) => Get(url, ct);
     public async Task<DanmakuSearchResult> SearchCachedAsync(CatalogItem work, string episode, string endpoint, CancellationToken ct, bool forceRefresh = false)
     {
-        var identity = "v2|" + Setting.GetBool("danmaku_builtin_relay", true) + "|" + work.Title + "|" + work.OriginalTitle + "|" + string.Join('|', work.Aliases.Order()) + "|" + work.Year + "|" + work.Kind + "|" + episode + "|" + endpoint;
+        var identity = "v3|" + JsonUtil.Serialize(DanmakuService.All()) + "|" + Setting.GetBool("danmaku_bili", true) + "|" + Setting.GetBool("danmaku_builtin_relay", true) + "|" + work.Title + "|" + work.OriginalTitle + "|" + string.Join('|', work.Aliases.Order()) + "|" + work.Year + "|" + work.Kind + "|" + episode + "|" + endpoint;
         var key = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(identity)));
         var path = Path.Combine(AppPaths.Cache, "danmaku", key + ".json");
         if (!forceRefresh && !Setting.Incognito && File.Exists(path)) {
@@ -126,6 +134,24 @@ public sealed class DanmakuSearch(HttpClient client = null)
         return result;
     }
     public async Task<DanmakuSearchResult> SearchAsync(CatalogItem work, string episode, string endpoint, CancellationToken ct)
+    {
+        var messages = new List<string>(); var transient = false;
+        foreach (var service in DanmakuService.All().Where(p => p.Enabled))
+        {
+            try
+            {
+                var result = service.Official ? await SearchCatalogAsync(work, episode, service.Url, service.Name, ct) : await SearchLegacyAsync(work, episode, service.Url, ct);
+                if (result.Text.Length > 0) return result with { Provider = service.Name };
+                messages.Add(service.Name + "未找到可靠匹配");
+            }
+            catch (Exception) when (!ct.IsCancellationRequested) { transient = true; messages.Add(service.Name + "暂不可用，请检查地址、凭据或配额"); }
+        }
+        DanmakuSearchResult fallback;
+        try { fallback = await SearchLegacyAsync(work, episode, endpoint, ct); }
+        catch (Exception) when (!ct.IsCancellationRequested) { fallback = new("", "默认弹幕服务暂不可用", Transient: true); }
+        return fallback.Text.Length > 0 ? fallback : fallback with { Transient = transient || fallback.Transient, Message = string.Join("；", messages.Append(fallback.Message)) };
+    }
+    async Task<DanmakuSearchResult> SearchLegacyAsync(CatalogItem work, string episode, string endpoint, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
         if (!string.IsNullOrWhiteSpace(endpoint)) {
@@ -159,7 +185,7 @@ public sealed class DanmakuSearch(HttpClient client = null)
                 }
             } else relayFailed = true;
         }
-        var bili = await SearchBilibiliAsync(work, episode, ct);
+        var bili = Setting.GetBool("danmaku_bili", true) ? await SearchBilibiliAsync(work, episode, ct) : new DanmakuSearchResult("", "B站正片弹幕已关闭");
         return bili.Text.Length > 0 ? bili : bili with { Transient = relayFailed, Message = Setting.GetBool("danmaku_builtin_relay", true) ? (relayFailed ? "弹弹play公共代理暂不可用；" : "弹弹play未找到可靠匹配；") + bili.Message : bili.Message };
     }
     async Task<DanmakuSearchResult> SearchCatalogAsync(CatalogItem work, string episode, string root, string label, CancellationToken ct)
@@ -203,8 +229,11 @@ public sealed class DanmakuSearch(HttpClient client = null)
             var series = detail?["result"];
             if (!SameTitle(S(series, "title"), work)) return new("", "B站剧集名称不匹配，已跳过");
             if ((work.Kind == "movie") != (S(series, "type") == "2")) return new("", "B站正片类型不同，已跳过同名作品");
-            var publish = S(series?["publish"], "pub_time");
-            if (work.Year.Length == 4 && publish.Length >= 4 && publish[..4] != work.Year) return new("", "B站年份不同，已跳过同名作品");
+            // Search pubtime is the film's release date; season.publish.pub_time is its Bilibili upload date.
+            // E.g. Shawshank is released in 1994 but its Bilibili season was published in 2019.
+            if (long.TryParse(S(matches[0], "pubtime"), out var releaseTimestamp) && releaseTimestamp is >= -5364662400 and <= 4133980799
+                && work.Year.Length == 4 && DateTimeOffset.FromUnixTimeSeconds(releaseTimestamp).Year.ToString() != work.Year)
+                return new("", "B站原作上映年份不同，已跳过同名作品");
             var ep = SelectEpisode(series?["episodes"] as JsonArray, episode, work.Kind); var cid = S(ep, "cid");
             if (!long.TryParse(cid, out _)) return new("", "B站未找到匹配的正片集数");
             return new(await Get("https://comment.bilibili.com/" + cid + ".xml", ct), "B站正片弹幕自动匹配完成", "B站正片", cid, S(ep, "title"));

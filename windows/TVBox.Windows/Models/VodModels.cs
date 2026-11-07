@@ -170,8 +170,8 @@ public class VodFlag
         if (Episodes.Count == 0) return null;
         var match = Episodes.FirstOrDefault(e => e.Name == name);
         if (match != null) return match;
-        var number = Episode.Digit(name);
-        if (number >= 0) match = Episodes.FirstOrDefault(e => Episode.Digit(e.Name) == number);
+        var identity = EpisodeIdentity.Parse(name);
+        if (identity.Number >= 0) match = Episodes.FirstOrDefault(e => identity.Matches(EpisodeIdentity.Parse(e.Name)));
         if (match != null) return match;
         return strict ? null : Episodes[0];
     }
@@ -187,8 +187,7 @@ public class Episode
     {
         try
         {
-            var m = System.Text.RegularExpressions.Regex.Match(text ?? "", "\\d+");
-            return m.Success ? int.Parse(m.Value) : -1;
+            return EpisodeIdentity.Parse(text).Number;
         }
         catch { return -1; }
     }

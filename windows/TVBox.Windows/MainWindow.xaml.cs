@@ -199,6 +199,12 @@ public sealed partial class MainWindow : Window
         Close();
     }
 
+    public void ExitForUpdate()
+    {
+        _allowWindowClose = true;
+        Close(); // Normal closing path saves playback state and disposes resources; never terminate a process.
+    }
+
     async void OnRootGridLoaded(object sender, RoutedEventArgs e)
     {
         RootGrid.Loaded -= OnRootGridLoaded;

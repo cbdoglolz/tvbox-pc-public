@@ -12,11 +12,13 @@ namespace TVBoxForWindows.Net
     }
     internal class ProbeHandler : System.Net.Http.HttpMessageHandler
     {
-        protected override Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, CancellationToken ct)
+        public static Func<System.Net.Http.HttpRequestMessage, CancellationToken, Task> BeforeSend;
+        protected override async Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, CancellationToken ct)
         {
+            if (BeforeSend != null) await BeforeSend(request, ct);
             var response = new System.Net.Http.HttpResponseMessage(ResponsesContain(request, out var bytes) ? System.Net.HttpStatusCode.OK : System.Net.HttpStatusCode.NotFound)
             { RequestMessage = request, Content = new System.Net.Http.ByteArrayContent(bytes ?? Array.Empty<byte>()) };
-            return Task.FromResult(response);
+            return response;
         }
         static bool ResponsesContain(System.Net.Http.HttpRequestMessage request, out byte[] bytes) => HttpUtil.Responses.TryGetValue(request.RequestUri!.AbsoluteUri, out bytes);
     }

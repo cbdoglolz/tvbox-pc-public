@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net9.0-windows10.0.19041.0</TargetFramework>
@@ -9,9 +9,9 @@
     <Product>TVBox PC</Product>
     <Authors>TVBox Windows contributors</Authors>
     <Description>A native Windows TVBox client built with WinUI 3.</Description>
-    <Version>0.8.5</Version>
-    <AssemblyVersion>0.8.5.0</AssemblyVersion>
-    <FileVersion>0.8.5.0</FileVersion>
+    <Version>0.8.6</Version>
+    <AssemblyVersion>0.8.6.0</AssemblyVersion>
+    <FileVersion>0.8.6.0</FileVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Platforms>x64</Platforms>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
@@ -30,7 +30,7 @@
     <NoWarn>$(NoWarn);CS8305;CA1416</NoWarn>
     <ApplicationIcon>Assets\icons\icon.ico</ApplicationIcon>
     <UserDataPublishExcludes>**\prefs.json;**\preferences.json;**\settings.json;**\configs.json;**\setting_config.json;**\history.json;**\keep.json;**\favorites.json;**\sources.json;**\cookies.json;**\credentials.json;**\tokens.json;**\app.log;**\wexfnwconfig.json;**\*.log;**\*.tmp;**\*.bak;**\*.dmp</UserDataPublishExcludes>
-    <UserDataPublishExcludes>$(UserDataPublishExcludes);**\tmdb.credential*;**\metadata-v4*.sqlite*</UserDataPublishExcludes>
+    <UserDataPublishExcludes>$(UserDataPublishExcludes);**\*.credential*;**\metadata-v4*.sqlite*</UserDataPublishExcludes>
     <DefaultItemExcludes>$(DefaultItemExcludes);$(UserDataPublishExcludes)</DefaultItemExcludes>
   </PropertyGroup>
 
