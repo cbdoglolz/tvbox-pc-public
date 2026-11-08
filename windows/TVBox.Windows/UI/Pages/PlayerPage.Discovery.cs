@@ -1,4 +1,4 @@
-using Microsoft.UI.Xaml;
+﻿using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using TVBoxForWindows.Core;
 using TVBoxForWindows.Engine;
@@ -256,6 +256,8 @@ public sealed partial class PlayerPage
         if (sender is not Button button || button.Tag is not string key) return;
         var site = SiteRegistry.All.FirstOrDefault(s => s.Key == key); if (site == null) return;
         var menu = new MenuFlyout();
+        menu.Items.Add(new MenuFlyoutItem { Text = "手动标记本片本季的广告，自动选源会优化优先级。", IsEnabled = false });
+        menu.Items.Add(new MenuFlyoutSeparator());
         foreach (var mark in Enum.GetValues<AdMark>()) { var item = new MenuFlyoutItem { Text = SourceAdPolicy.Label(mark) }; item.Click += (_, _) => { SourceAdPolicy.Set(_session.Catalog, site, mark); RefreshAdMark(); QueueSelectionMutation(RefreshSelectionPanel); ShowToast("已标记“" + site.Name + "”：" + SourceAdPolicy.Label(mark) + "，应用到本片本季"); }; menu.Items.Add(item); }
         menu.ShowAt(button);
     }

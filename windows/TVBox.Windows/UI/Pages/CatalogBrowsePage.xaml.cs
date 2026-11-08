@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
@@ -52,14 +52,16 @@ public sealed partial class CatalogBrowsePage : Page
         if (_root.Keyword.Length > 0) query.Keyword = _root.Keyword;
         SetControls(query);
         PageTitle.Text = query.CompanyId > 0 ? query.CompanyName + (query.CompanyIsNetwork ? " · 播出作品" : " · 出品 / 参与作品") : query.PersonId > 0 ? query.PersonName + " · 参演作品" : _root.Scope == "collection" ? CollectionHeading(query) : CategoryName(_root.Category, _root.Scope);
-        ProviderCombo.Visibility = Local ? Visibility.Collapsed : Visibility.Visible;
+        ProviderCombo.Visibility = Local||query.Provider=="anilist" ? Visibility.Collapsed : Visibility.Visible;
         SearchScopeCombo.IsEnabled = !Local;
         ClearHistoryButton.Visibility = _root.Scope == "history" ? Visibility.Visible : Visibility.Collapsed;
         _channelUpdating = true;
         ChannelTabs.Visibility = Local || _root.Scope is "global" or "person" or "collection" ? Visibility.Collapsed : Visibility.Visible;
-        ChannelTabs.SelectedIndex = query.ScopeId.EndsWith(":latest") ? 2 : query.ScopeId.EndsWith(":rating") ? 3 : query.ScopeId.EndsWith(":hot") ? 1 : 0;
+        ChannelTabs.Items.Clear(); foreach(var label in (_root.Category=="anime" ? new[]{"推荐","新番","热门","最新","高分"}:new[]{"推荐","热门","最新","高分"}))ChannelTabs.Items.Add(label);
+        var seasonalOffset=_root.Category=="anime"?1:0;
+        ChannelTabs.SelectedIndex = query.ScopeId.EndsWith(":seasonal") ? 1 : query.ScopeId.EndsWith(":latest") ? 2+seasonalOffset : query.ScopeId.EndsWith(":rating") ? 3+seasonalOffset : query.ScopeId.EndsWith(":hot") ? 1+seasonalOffset : 0;
         _channelUpdating = false;
-        Apply(query); LoadPresets();
+        Apply(query);
     }
     protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
@@ -77,7 +79,7 @@ public sealed partial class CatalogBrowsePage : Page
     public static string CategoryName(string category, string scope = "category") => scope switch { "favorites" => "收藏", "history" => "观看历史", "global" => "搜索影视", _ => category switch { "movie" => "电影", "tv" => "电视剧", "anime" => "动漫", "documentary" => "纪录片", "variety" => "综艺", _ => "影视目录" } };
     void SetControls(CatalogQuery q)
     {
-        _updating = true; ProviderCombo.IsEnabled = q.PersonId == 0 && q.CompanyId == 0; KeywordBox.Text = q.Keyword; Filters.SetQuery(q); ProviderCombo.SelectedIndex = q.Provider == "tmdb" ? 1 : 0; SearchScopeCombo.SelectedIndex = q.Scope == "global" ? 1 : 0; _updating = false;
+        _updating = true; ProviderCombo.Visibility=Local||q.Provider=="anilist"?Visibility.Collapsed:Visibility.Visible; ProviderCombo.IsEnabled = q.PersonId == 0 && q.CompanyId == 0 && q.Provider!="anilist"; KeywordBox.Text = q.Keyword; Filters.SetQuery(q); ProviderCombo.SelectedIndex = q.Provider == "tmdb" ? 1 : 0; SearchScopeCombo.SelectedIndex = q.Scope == "global" ? 1 : 0; _updating = false;
     }
     void Hint(bool userRequested) { if (OptionalMetadataHint.TryMarkShown(userRequested)) OptionalHint.IsOpen = true; }
     void OnNeverHint(object sender, RoutedEventArgs e) { OptionalMetadataHint.DismissForever(); OptionalHint.IsOpen = false; }
@@ -101,7 +103,7 @@ public sealed partial class CatalogBrowsePage : Page
     { if (!_updating && e.Reason == AutoSuggestionBoxTextChangeReason.UserInput) { _debounce.Stop(); _debounce.Start(); } }
     void OnSearchSubmitted(AutoSuggestBox sender, AutoSuggestBoxQuerySubmittedEventArgs e) { SearchHistory.Add(sender.Text); _debounce.Stop(); ApplyInput(); }
     public void SearchKeyword(string keyword) { _updating = true; KeywordBox.Text = keyword; _updating = false; ApplyInput(); }
-    void ApplyInput() { if (_state == null || _closed) return; var q = Filters.CurrentQuery(); q.Keyword = KeywordBox.Text ?? ""; q.Provider = ProviderCombo.SelectedIndex == 1 ? "tmdb" : "douban"; Apply(q); }
+    void ApplyInput() { if (_state == null || _closed) return; var q = Filters.CurrentQuery(); q.Keyword = KeywordBox.Text ?? ""; q.Provider = q.ScopeId.EndsWith(":seasonal")?"anilist":ProviderCombo.SelectedIndex == 1 ? "tmdb" : "douban"; Apply(q); }
     void OnRefresh(object sender, RoutedEventArgs e) { if (_state != null) Apply(_state.Query, true); }
     void OnMore(object sender, RoutedEventArgs e) { if (!_loading && _state?.HasMore == true) _ = LoadAsync(_generation); }
     void OnFiltersOpening(object sender, object e)
@@ -115,15 +117,18 @@ public sealed partial class CatalogBrowsePage : Page
     void OnChannelChanged(object sender, SelectionChangedEventArgs e)
     {
         if (_channelUpdating || _state == null || _closed) return;
-        var label = ChannelTabs.SelectedIndex switch { 1 => "hot", 2 => "latest", 3 => "rating", _ => "recommended" };
+        var index=ChannelTabs.SelectedIndex; var seasonal=_root.Category=="anime"&&index==1;
+        if(_root.Category=="anime"&&index>1)index--;
+        var label = seasonal?"seasonal":index switch { 1 => "hot", 2 => "latest", 3 => "rating", _ => "recommended" };
         var fallback = _state.Query.Copy(); fallback.ScopeId = _root.Category + ":" + label;
+        if(seasonal){fallback.Provider="anilist";fallback.Collection="";fallback.YearFrom=fallback.YearTo=DateTime.Now.Year;fallback.Keyword="";}else if(fallback.Provider=="anilist"){fallback.Provider="douban";fallback.YearFrom=fallback.YearTo=null;}
         fallback.ColumnSort = label == "latest" ? "latest" : label == "rating" ? "rating" : "popularity";
         fallback.Sort = fallback.ColumnSort; fallback.SortDirection = "default"; fallback.SortAscending = false;
         Apply(_queries.LastView(fallback));
     }
     void RenderConditions()
     {
-        SelectedConditions.SetQuery(_state.Query);
+        SelectedConditions.SetQuery(_state.Query); FilterBadge.Count = CatalogFacetRules.Count(_state.Query);
     }
     void OnToggleFilters(object sender, RoutedEventArgs e) => Filters.Visibility = Filters.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
     void OnAdvancedSearch(object sender, RoutedEventArgs e) { SavePosition(); Frame.Navigate(typeof(SearchPage), KeywordBox.Text ?? ""); }
@@ -139,7 +144,7 @@ public sealed partial class CatalogBrowsePage : Page
         if (_root.Scope == "person") PageTitle.Text = query.CompanyId > 0 ? query.CompanyName + (query.CompanyIsNetwork ? " · 播出作品" : " · 出品 / 参与作品") : query.PersonId > 0 ? query.PersonName + " · 参演作品" : "全部影视";
         var previousScope = _state?.Query.ScopeId;
         _state = refresh ? new() { Query = query.Copy() } : _queries.Restore(query);
-        if (previousScope != _state.Query.ScopeId) LoadPresets();
+
         MetadataStore.Instance.Write("scope", RootKey, query);
         _queries.RememberView(query);
         Render(); RestorePosition();
@@ -293,24 +298,5 @@ public sealed partial class CatalogBrowsePage : Page
         var result = await new ContentDialog { XamlRoot = XamlRoot, Title = "清空全部观看历史？", Content = "此操作只清除观看记录，不删除收藏、设置或任何视频文件。", PrimaryButtonText = "清空历史", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close }.ShowAsync();
         if (result == ContentDialogResult.Primary) { Stores.DeleteHistories(VodConfigService.Cid); _ = LoadLocalAsync(_generation); }
     }
-    void LoadPresets()
-    {
-        _updating = true; PresetCombo.ItemsSource = MetadataStore.Instance.List<CatalogPreset>("preset").Select(p => p.Value).Where(p => p.Query.ScopeId == _state.Query.ScopeId).ToList(); _updating = false;
-    }
-    void OnPresetChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_updating || PresetCombo.SelectedItem is not CatalogPreset preset) return;
-        PresetName.Text = preset.Name; PresetPinned.IsChecked = preset.Pinned; var query = preset.Query.Copy(); SetControls(query); Apply(query);
-    }
-    void OnSavePreset(object sender, RoutedEventArgs e)
-    {
-        if (_state == null || PresetName.Text.Trim().Length == 0) { ResultStatus.Text = "请先输入筛选名称"; return; }
-        var query = Filters.CurrentQuery(); query.Keyword = KeywordBox.Text ?? ""; query.Provider = _state.Query.Provider;
-        MetadataStore.Instance.Write("preset", query.ScopeId + ":" + PresetName.Text.Trim(), new CatalogPreset(PresetName.Text.Trim(), query, PresetPinned.IsChecked == true)); LoadPresets(); ResultStatus.Text = "筛选预设已保存";
-    }
-    void OnDeletePreset(object sender, RoutedEventArgs e)
-    {
-        if (_state == null || PresetName.Text.Trim().Length == 0) return;
-        MetadataStore.Instance.Delete("preset", _state.Query.ScopeId + ":" + PresetName.Text.Trim()); LoadPresets(); ResultStatus.Text = "仅删除筛选预设，收藏和历史未更改";
-    }
+    void OnClearFilters(object sender, RoutedEventArgs e) { if (_state != null) Apply(CatalogFacetRules.Clear(_state.Query)); }
 }

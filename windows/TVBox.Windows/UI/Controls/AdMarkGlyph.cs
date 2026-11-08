@@ -21,7 +21,8 @@ public sealed class AdMarkGlyph : UserControl
             grid.Children.Add(new Ellipse { Width = 21, Height = 21, Stroke = Brush(230, 176, 56), StrokeThickness = 1.5 });
             grid.Children.Add(new TextBlock { Text = "?", FontSize = 18, FontWeight = Microsoft.UI.Text.FontWeights.Bold, Foreground = Brush(230, 176, 56), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
         } else if (Mark == AdMark.TextAds) {
-            grid.Children.Add(new TextBlock { Text = "文", FontSize = 16, Foreground = Brush(235, 169, 65), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
+            grid.Children.Add((UIElement)Microsoft.UI.Xaml.Markup.XamlReader.Load("<Path xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' Fill='#F2C98A' Stroke='#AB763A' StrokeThickness='1.1' StrokeLineJoin='Round' Data='M2,5 Q7,3 12,6 Q17,3 22,5 L22,20 Q17,18 12,21 Q7,18 2,20 Z M12,6 L12,21'/>"));
+            grid.Children.Add((UIElement)Microsoft.UI.Xaml.Markup.XamlReader.Load("<Path xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' Stroke='#E65060' StrokeThickness='2.1' StrokeStartLineCap='Round' StrokeEndLineCap='Round' Data='M8,9 L17,18 M17,9 L8,18'/>"));
         } else if (Mark == AdMark.Ads) {
             grid.Children.Add((UIElement)Microsoft.UI.Xaml.Markup.XamlReader.Load("<Path xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' Fill='#F06470' Data='M5,8 L3,1 10,6 14,6 21,1 19,8 A9,9 0 1 1 5,8 Z'/>"));
             grid.Children.Add((UIElement)Microsoft.UI.Xaml.Markup.XamlReader.Load("<Path xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' Stroke='#421328' StrokeThickness='1.7' StrokeStartLineCap='Round' StrokeEndLineCap='Round' Data='M6,11 L9,12 M15,12 L18,11 M8,17 Q12,20 16,17'/>"));

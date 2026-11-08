@@ -1,4 +1,4 @@
-using Microsoft.UI.Xaml;
+﻿using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using TVBoxForWindows.Engine;
 using TVBoxForWindows.Models;
@@ -24,7 +24,8 @@ public sealed class CatalogFacetChips : UserControl
         if (query.Keyword.Length > 0) Add("片名：" + query.Keyword, q => q.Keyword = "");
         foreach (var c in query.Countries) Add("地区：" + CatalogVocabulary.Label(c), q => q.Countries.Remove(c));
         foreach (var g in query.Genres) Add("类型：" + CatalogVocabulary.Label(g), q => q.Genres.Remove(g));
-        if (query.YearFrom != null || query.YearTo != null) Add($"年份 {query.YearFrom?.ToString() ?? "不限"}–{query.YearTo?.ToString() ?? "不限"}", q => { q.YearFrom = q.YearTo = null; });
+        if (query.YearFrom != null || query.YearTo != null) Add(query.YearFrom==query.YearTo ? $"年份：{query.YearFrom}" : $"年份：{query.YearFrom?.ToString() ?? "不限"}–{query.YearTo?.ToString() ?? "不限"}", q => { q.YearFrom = q.YearTo = null; });
+        if(query.IncludeUnknownYear)Add("包含未知年份",q=>q.IncludeUnknownYear=false);
         if (query.MinimumRating != null) Add($"{query.RatingProvider} ≥ {query.MinimumRating}", q => q.MinimumRating = null);
         if (query.MinimumVotes != null) Add($"评价人数 ≥ {query.MinimumVotes}", q => q.MinimumVotes = null);
         if (query.Kind.Length > 0) Add(query.Kind == "tv" ? "剧集" : "电影", q => q.Kind = "");

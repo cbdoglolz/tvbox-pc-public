@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using System.Xml;
@@ -220,12 +220,4 @@ public class Sub
     [JsonPropertyName("lang")] public string Lang { get; set; } = "";
     [JsonPropertyName("format")] public string Format { get; set; } = "";
     [JsonPropertyName("flag")] public int FlagValue { get; set; }
-}
-
-public class Drm
-{
-    [JsonPropertyName("type")] public string Type { get; set; } = "";
-    [JsonPropertyName("key")] public string Key { get; set; } = "";
-    [JsonPropertyName("header")] public Dictionary<string, string> Header { get; set; } = new();
-    [JsonPropertyName("forceKey")] public bool ForceKey { get; set; }
 }

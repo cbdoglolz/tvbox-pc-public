@@ -7,6 +7,7 @@ namespace TVBoxForWindows.Net
         static readonly System.Net.Http.HttpClient ProbeClient = new(new ProbeHandler());
         public static System.Net.Http.HttpClient Client(string proxyUrl = null, bool redirect = true, bool bypassProxy = false) => ProbeClient;
         public static Task<string> GetString(string url) => throw new InvalidOperationException("Unexpected extension request");
+        public static Task<string> Load(string url,Dictionary<string,string> headers=null)=>throw new InvalidOperationException("Unexpected playlist load outside guarded catalogue");
         public static Task<GuardResponse> Get(string url, int timeoutMs) =>
             throw new InvalidOperationException("Unexpected HTTP during bundled asset load: " + url);
     }
@@ -37,6 +38,7 @@ namespace TVBoxForWindows.Core
     internal static class Sniffer { public static bool IsVideoFormat(string url) => url.Contains(".m3u8", StringComparison.OrdinalIgnoreCase) || url.Contains(".mp4", StringComparison.OrdinalIgnoreCase); }
     internal static class UrlUtil
     {
+        public static string FixHeader(string key)=>key;
         public static string Resolve(string url, string relative) => new Uri(new Uri(url), relative).AbsoluteUri;
     }
 }

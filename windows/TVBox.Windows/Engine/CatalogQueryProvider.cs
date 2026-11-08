@@ -68,6 +68,7 @@ public sealed class CatalogQueryProvider(MetadataHttp http = null, MetadataStore
     MetadataStore Store => store ?? MetadataStore.Instance;
     public async Task<CatalogProviderPage> FetchAsync(CatalogQuery query, string kind, int page, string country, CancellationToken ct)
     {
+        if(query.Provider=="anilist")return await new AnimeCatalog(store:Store).Fetch(query,page,ct);
         if (query.PersonId > 0) return await new PersonCatalog(_http, Store).FetchAsync(query, kind, page, ct);
         var cacheKey = query.CacheKey(page) + ":" + kind + ":" + country;
         var cache = Store.Read<CatalogProviderPage>("response", cacheKey);
@@ -123,6 +124,7 @@ public sealed class CatalogQueryProvider(MetadataHttp http = null, MetadataStore
     }
     public async Task<CatalogItem> DetailsAsync(CatalogItem work, CancellationToken ct)
     {
+        if(work.Provider=="anilist")return work.Copy();
         var cache = Store.Read<CatalogItem>("work-detail", work.WorkKey);
         if (cache?.IsFresh == true && cache.Value.DetailsSchema >= 8 && (work.Provider != "tmdb" || cache.Value.ArtworkSchema >= 2 && cache.Value.PresentationSchema >= 1)) return cache.Value;
         try

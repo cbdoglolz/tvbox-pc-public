@@ -22,6 +22,13 @@ public sealed class MetadataDetailsService(ICatalogQueryProvider provider = null
             (original.Provider != "douban" || !TmdbCredentials.HasCredential || cached.Value.TmdbLinkSuppressed || cached.Value.Ratings.Any(r => r.Provider == "tmdb")))
             return new(cached.Value.Copy(), new(), "");
         var work = original.Copy(); var messages = new List<string>(); var candidates = new List<CatalogItem>();
+        if(work.Provider=="anilist") {
+            try {
+                var hits=await _provider.FetchAsync(new CatalogQuery{Provider="douban",Category=work.Kind,Keyword=work.Title},work.Kind,1,"",ct);
+                var reliable=hits.Items.Where(c=>CatalogIdentity.ReliablePair(work,c)).ToList();
+                if(reliable.Count==1){var matched=reliable[0];matched.IdentityKey=work.WorkKey;matched.Aliases=matched.Aliases.Concat(work.Aliases).Distinct().ToList();work=matched;}
+            }catch(OperationCanceledException)when(ct.IsCancellationRequested){throw;}catch{}
+        }
         if (work.Provider == "legacy" || work.Id.Length == 0)
         {
             if (work.Title.Length == 0 || work.Year.Length == 0 || work.Kind.Length == 0) return new(work, candidates, "旧记录缺少年份或类型，保留原播放方式，暂不自动关联");
@@ -40,7 +47,7 @@ public sealed class MetadataDetailsService(ICatalogQueryProvider provider = null
             work.TmdbLinkSuppressed = savedLink.Suppressed;
             if (!savedLink.Suppressed) work.ExternalIds = savedLink.Ids;
         }
-        if (work.Provider == "douban" && TmdbCredentials.HasCredential && !work.TmdbLinkSuppressed)
+        if (work.Provider is "douban" or "anilist" && TmdbCredentials.HasCredential && !work.TmdbLinkSuppressed)
         {
             try
             {

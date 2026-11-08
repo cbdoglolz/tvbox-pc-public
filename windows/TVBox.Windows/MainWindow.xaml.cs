@@ -1,4 +1,4 @@
-using TVBoxForWindows.Core;
+﻿using TVBoxForWindows.Core;
 using TVBoxForWindows.Engine;
 using TVBoxForWindows.Live;
 using TVBoxForWindows.Models;
@@ -121,7 +121,7 @@ public sealed partial class MainWindow : Window
         Closed += (s, e) =>
         {
             _closed = true;
-            ActionNotice.Clear(); _badgeTimer?.Stop();
+            ActionNotice.Clear(); _badgeTimer?.Stop(); _updateForegroundTimer?.Stop();
             ThemeManager.Changed -= ApplyDiscoveryTheme;
             if (_titleBarXamlRoot != null)
             {
@@ -201,10 +201,42 @@ public sealed partial class MainWindow : Window
         Close(); // Normal closing path saves playback state and disposes resources; never terminate a process.
     }
 
+    ReleaseDownload _startupUpdate;
+    async Task CheckStartupUpdateAsync()
+    {
+        try { using var timeout=new CancellationTokenSource(TimeSpan.FromSeconds(25));
+            var available=await new ReleaseUpdate().CheckAsync(BuildInfo.Version,timeout.Token);
+            Logger.D("UpdateStartup",available==null?"No newer compatible release":$"New release available {available.Version}");
+            if(_closed||available==null)return;_startupUpdate=available;NewVersionButton.Visibility=Visibility.Visible;
+        }catch { /* Startup update checks are silent and do not block viewing. */ }
+    }
+    void OnNewVersion(object sender,RoutedEventArgs e)
+    {
+        ActivateSection("settings",SettingsFrame,typeof(SettingsPage));
+        if(SettingsFrame.Content is SettingsPage settings)settings.FocusUpdateSettings(_startupUpdate);
+    }
+    Microsoft.UI.Dispatching.DispatcherQueueTimer _updateForegroundTimer;
+    void ShowCompletedUpdate()
+    {
+        var receipt=UpdateStartup.Consume(AppPaths.Root,AppPaths.InstallRoot,BuildInfo.Version);if(receipt==null)return;
+        try {
+            AppWindow.Show();Activate();
+            if(AppWindow.Presenter is OverlappedPresenter presenter) {
+                var original=presenter.IsAlwaysOnTop;presenter.IsAlwaysOnTop=true;
+                _updateForegroundTimer=DispatcherQueue.CreateTimer();_updateForegroundTimer.Interval=TimeSpan.FromMilliseconds(750);_updateForegroundTimer.IsRepeating=false;
+                _updateForegroundTimer.Tick+=(_,_)=>{presenter.IsAlwaysOnTop=original;_updateForegroundTimer.Stop();Logger.D("UpdateStartup",$"Temporary topmost restored={original}");};_updateForegroundTimer.Start();
+            }
+            ShowNotice($"更新成功，从 v{receipt.From} 更新到 v{receipt.To}",InfoBarSeverity.Success);
+            Logger.D("UpdateStartup",$"Update notice shown {receipt.From} -> {receipt.To}");
+        }catch { Logger.D("UpdateStartup","Could not bring updated window forward"); }
+    }
+
     async void OnRootGridLoaded(object sender, RoutedEventArgs e)
     {
         RootGrid.Loaded -= OnRootGridLoaded;
-        _ = PrivateSubscriptions.RefreshAtStartup();
+        InitialPrivateRestoreTask = PrivateSubscriptions.RefreshAtStartup();
+        _ = CheckStartupUpdateAsync();
+        ShowCompletedUpdate();
         var path = System.IO.Path.Combine(AppPaths.IconDir, "icon-title.png");
         try
         {
@@ -367,6 +399,8 @@ public sealed partial class MainWindow : Window
     /// downgraded to the non-blocking refresh warning.
     /// </summary>
     public Task InitialVodRestoreTask => _initialVodRestoreTask;
+    public Task InitialPrivateRestoreTask {get;private set;} = Task.CompletedTask;
+    public void OpenSiteSettings()=>ActivateSection("sites",SitesFrame,typeof(SitesPage));
 
     public Task InitialLiveRestoreTask => _initialLiveRestoreTask;
 
@@ -940,7 +974,7 @@ public sealed partial class MainWindow : Window
         }
         var tag = args.InvokedItemContainer?.Tag as string;
         Logger.D("UiNavigation", tag ?? "settings");
-        if (tag == "sports") { ActivateSection("sports", SportsFrame, typeof(VodPage), "sports"); return; }
+        if (tag == "sports") { ActivateSection("sports", SportsFrame, typeof(LivePage), new SportsLiveArgs(PrivateSubscriptions.SportsLives)); return; }
         if (tag == "sites") { ActivateSection("sites", SitesFrame, typeof(SitesPage)); return; }
         if (tag == "player") { ActivateSection("player", PlaybackFrame, typeof(PlayerPage)); return; }
         if (tag is "movie" or "tv" or "anime" or "documentary" or "variety")

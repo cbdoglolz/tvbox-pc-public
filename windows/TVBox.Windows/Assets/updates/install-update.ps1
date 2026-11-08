@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$Manifest, [switch]$NoRestart)
+﻿param([Parameter(Mandatory=$true)][string]$Manifest, [switch]$NoRestart)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $resultFile = Join-Path (Split-Path -Parent $Manifest) 'result.json'
@@ -64,7 +64,7 @@ try {
         if ((FileHash $target) -ne $file.Sha256) { throw 'Installed update hash mismatch' }
     }
     WriteResult 'installed' 'Update installed; previous files retained in the update backup'
-    if (-not $NoRestart) { Start-Process -FilePath (Join-Path $targetRoot 'TVBox.exe') -WorkingDirectory $targetRoot -WindowStyle Hidden }
+    if (-not $NoRestart) { Start-Process -FilePath (Join-Path $targetRoot 'TVBox.exe') -WorkingDirectory $targetRoot -WindowStyle Normal }
     exit 0
 } catch {
     $restored = $true

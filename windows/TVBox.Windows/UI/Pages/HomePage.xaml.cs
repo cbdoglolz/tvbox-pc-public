@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
@@ -64,7 +64,7 @@ public sealed partial class HomePage : Page
         {
             if (_request?.IsCancellationRequested == true) _request = new();
             _active = true; VodConfigService.Instance.Loaded -= RefreshLocalState; VodConfigService.Instance.Loaded += RefreshLocalState;
-            RefreshLocalState(); LoadPinnedPresets(); AttachScroll(); UiHints.Attach(this); UpdateHighlights(false);
+            RefreshLocalState(); AttachScroll(); UiHints.Attach(this); UpdateHighlights(false);
             _ = LoadDailyAsync();
             if (_items.Count == 0 && !_loading) _ = LoadAsync(_generation); else _ = HydrateAsync(_state, _generation, _request.Token);
         };
@@ -132,10 +132,18 @@ public sealed partial class HomePage : Page
         try { q.Validate(); } catch (ArgumentException e) { FeedError.Message = e.Message; FeedError.IsOpen = true; return; }
         SavePosition(); _request?.Cancel(); _request = new(); _generation++; _loading = false; _wheelArmed = false;
         _state = refresh ? new() { Query = q.Copy() } : _queries.Restore(q);
-        HomeFilters.SetQuery(q); HomeChips.SetQuery(q); Render(); RestoreOffset();
+        HomeFilters.SetQuery(q); HomeChips.SetQuery(q); HomeFilterBadge.Count=CatalogFacetRules.Count(q); Render(); RestoreOffset();
         if (_active || IsLoaded) _ = LoadDailyAsync();
         if (_active || IsLoaded)
-        { if (_state.Items.Count == 0 || refresh) _ = LoadAsync(_generation); else _ = HydrateAsync(_state, _generation, _request.Token); }
+        { if (_state.Items.Count == 0 || refresh) _ = LoadAsync(_generation); else if(_state.IsStale)_=RefreshCachedAsync(_generation);else _ = HydrateAsync(_state, _generation, _request.Token); }
+    }
+    async Task RefreshCachedAsync(long generation)
+    {
+        _loading=true;var ct=_request.Token;
+        try {var current=await _queries.RefreshHeadAsync(_state,ct);if(ct.IsCancellationRequested||generation!=_generation||!_active)return;_state=current;Render();_=HydrateAsync(current,generation,ct);}
+        catch(OperationCanceledException){}
+        catch {if(generation==_generation&&_active){FeedError.Message="推荐暂未刷新，正在显示已缓存内容；影片仍可查找播放源。";FeedError.IsOpen=true;}}
+        finally{if(generation==_generation)_loading=false;}
     }
     public void RefreshLocalState()
     {
@@ -182,7 +190,7 @@ public sealed partial class HomePage : Page
         ContinueRows.CapturePointer(e.Pointer); _suppressContinueUntil = Environment.TickCount64 + 500;
         _continueScroll.ChangeView(Math.Clamp(_continueDragOffset - delta, 0, _continueScroll.ScrollableWidth), null, null, true); e.Handled = true;
     }
-    void OnContinueDragReleased(object sender, PointerRoutedEventArgs e) { _continueDragging = false; ContinueRows.ReleasePointerCapture(e.Pointer); }
+    void OnContinueDragReleased(object sender, PointerRoutedEventArgs e) { if (!_continueDragging) return; _continueDragging = false; ContinueRows.ReleasePointerCapture(e.Pointer); }
     async Task LoadContinueArtworkAsync(List<ContinueCard> cards, CancellationToken ct)
     {
         foreach (var card in cards) {
@@ -234,7 +242,7 @@ public sealed partial class HomePage : Page
         EmptyText.Visibility = _items.Count == 0 && _hero == null ? Visibility.Visible : Visibility.Collapsed;
         EmptyText.Text = _loading ? "正在查询频道…" : _state.HasMore ? "当前页段没有匹配，可继续加载补全" : "暂无匹配，可调整本页筛选";
         MoreButton.Visibility = Visibility.Collapsed; MoreButton.IsEnabled = !_loading; Busy.IsActive = _loading;
-        FeedError.IsOpen = _state.IsStale; if (_state.IsStale) FeedError.Message = "当前显示缓存，资料服务暂时无法刷新";
+        FeedError.IsOpen = _state.IsStale && _state.ScopeNote.Contains("服务暂不可用"); if (FeedError.IsOpen) FeedError.Message = "推荐列表暂未更新，已保留上次内容。仍可进入影片查找播放源。";
     }
     async Task LoadAsync(long generation)
     {
@@ -292,12 +300,8 @@ public sealed partial class HomePage : Page
     void OnWheel(object sender, PointerRoutedEventArgs e) { if (e.GetCurrentPoint(PosterWall).Properties.MouseWheelDelta < 0) { _wheelArmed = true; DispatcherQueue.TryEnqueue(TryLoadAtBottom); } }
     void OnViewChanged(object sender, ScrollViewerViewChangedEventArgs e) { if (!_restoring && !e.IsIntermediate) { SavePosition(); TryLoadAtBottom(); } }
     void TryLoadAtBottom() { if (_wheelArmed && !_loading && !_restoring && _state.HasMore && _scroll != null && _scroll.ScrollableHeight - _scroll.VerticalOffset < 240) { _wheelArmed = false; _ = LoadAsync(_generation); } }
-    void LoadPinnedPresets()
-    {
-        PinnedPresets.Children.Clear();
-        foreach (var preset in MetadataStore.Instance.List<CatalogPreset>("preset").Select(p => p.Value).Where(p => p.Pinned).Take(10))
-        { var button = new Button { Content = preset.Name }; button.Click += (_, _) => { var q = preset.Query.Copy(); q.Scope = "home"; q.ScopeId = Provider + ":" + _channel.Key; q.Collection = q.ScopeId; Apply(q); }; PinnedPresets.Children.Add(button); }
-    }
+    void OnClearHomeFilters(object sender,RoutedEventArgs e){if(_state!=null)Apply(CatalogFacetRules.Clear(_state.Query));}
+
     void OnHeroPlay(object sender, RoutedEventArgs e) { if (_hero != null) { SavePosition(); CatalogActions.Details(_hero); } }
     void OnHeroDetails(object sender, RoutedEventArgs e) { if (_hero != null) { SavePosition(); CatalogActions.Details(_hero); } }
     void OnHd(object sender, RoutedEventArgs e) { FeedError.Message = HdSourceRegistry.Status; FeedError.Severity = InfoBarSeverity.Informational; FeedError.IsOpen = true; }

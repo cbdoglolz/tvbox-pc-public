@@ -12,6 +12,7 @@ public sealed class PrivateFeed
     public bool Enabled { get; set; } = true;
     public bool AllowHttp { get; set; }
     public List<Site> Sites { get; set; } = new();
+    public List<Models.Live> Lives { get; set; } = new();
     public DateTimeOffset Checked { get; set; }
     public string Status { get; set; } = "尚未检查";
 }
@@ -24,6 +25,18 @@ public static class PrivateSubscriptions
     public static event Action Changed;
     public static IReadOnlyList<PrivateFeed> Items => Feeds.ToList();
     public static IEnumerable<Site> Sites => Feeds.Where(f=>f.Enabled).SelectMany(f=>f.Sites);
+    public static List<Models.Live> SportsLives => Feeds.Where(f=>f.Enabled).SelectMany(f=>f.Lives ?? new()).Select(l=>JsonUtil.Deserialize<Models.Live>(JsonUtil.Serialize(l))).ToList();
+    public static List<Models.Live> ParseLives(string json,string baseUrl)
+    {
+        using var doc=JsonDocument.Parse(json);var list=new List<Models.Live>();
+        if(!doc.RootElement.TryGetProperty("lives",out var lives)||lives.ValueKind!=JsonValueKind.Array)return list;
+        foreach(var raw in lives.EnumerateArray().Take(100)) {
+            var live=JsonUtil.Deserialize<Models.Live>(raw.GetRawText());
+            if(live==null||string.IsNullOrWhiteSpace(live.Name)||!Uri.TryCreate(new Uri(baseUrl),live.Url,out var address)||address.Scheme is not ("http" or "https"))continue;
+            live.Url=address.AbsoluteUri;list.Add(live);
+        }
+        return list;
+    }
     public static bool IsPrivate(string key) => key?.StartsWith("private:",StringComparison.Ordinal)==true;
     public static bool Supported(Site site) => site.Type is 0 or 1 or 4 || site.Type==3 && (site.Api.EndsWith(".js",StringComparison.OrdinalIgnoreCase) || site.Api.Contains(".js?",StringComparison.OrdinalIgnoreCase) || site.Ext.EndsWith(".js",StringComparison.OrdinalIgnoreCase));
     public static bool Compatible(string key) => !IsPrivate(key) || Sites.FirstOrDefault(s=>s.Key==key) is {} site && Supported(site);
@@ -74,7 +87,8 @@ public static class PrivateSubscriptions
             response.EnsureSuccessStatusCode();await using var stream=await response.Content.ReadAsStreamAsync(timeout.Token);using var memory=new MemoryStream();var buffer=new byte[16384];int n;
             while((n=await stream.ReadAsync(buffer,timeout.Token))>0){if(memory.Length+n>4*1024*1024)throw new IOException("订阅内容过大");memory.Write(buffer,0,n);}
             var sites=Parse(Encoding.UTF8.GetString(memory.ToArray()),feed.Url,feed.Id);var delta=Difference(feed.Sites,sites);
-            feed.Sites=sites;feed.Checked=DateTimeOffset.Now;feed.Status=$"共{sites.Count}站，{sites.Count(Supported)}站可由当前Windows引擎处理";Save();return delta;
+            feed.Lives=ParseLives(Encoding.UTF8.GetString(memory.ToArray()),feed.Url);
+            feed.Sites=sites;feed.Checked=DateTimeOffset.Now;feed.Status=$"共{sites.Count}站，{sites.Count(Supported)}站可由当前Windows引擎处理，{feed.Lives.Count}份直播频道表";Save();return delta;
         } catch(OperationCanceledException) when(ct.IsCancellationRequested){throw;}
           catch {feed.Status="订阅暂不可用，保留上次成功的站点；可稍后重试。";Save();throw new IOException(feed.Status);}
         finally{Gate.Release();}

@@ -1,4 +1,4 @@
-using Microsoft.UI.Xaml;
+﻿using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using TVBoxForWindows.Core;
 
@@ -18,6 +18,10 @@ public sealed partial class SettingsPage
         } catch { panel.Children.Add(new TextBlock { Text = "本版本的更新说明暂不可用。" }); }
         await new ContentDialog { RequestedTheme = ActualTheme, XamlRoot = XamlRoot, Title = "版本更新", Content = new ScrollViewer { Content = panel, MaxHeight = 440, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled }, CloseButtonText = "关闭" }.ShowAsync();
     }
+    public void FocusUpdateSettings(ReleaseDownload available=null) => DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low,()=>{
+        UpdateLayout();SoftwareUpdatePanel.StartBringIntoView(new BringIntoViewOptions {VerticalAlignmentRatio=0,AnimationDesired=false});
+        if(available!=null){_availableUpdate=available;DownloadUpdateButton.Visibility=Visibility.Visible;UpdateStatusText.Text=$"发现 v{available.Version} · {available.Size/1024d/1024:0.0} MiB，可下载安装";}
+    });
     ReleaseDownload _availableUpdate;
     StagedUpdate _stagedUpdate;
     bool _updateBusy;

@@ -127,6 +127,7 @@ await CatalogV085Regression.RunAsync(Require);
 await CatalogV086Regression.RunAsync(Require);
 await CatalogV087Regression.RunAsync(Require);
 await CatalogV088Regression.RunAsync(Require);
+await CatalogV089Regression.RunAsync(Require);
 var bundled = await Decoder.GetJson(BuiltInSources.ConfigUrl);
 using (var catalog = JsonDocument.Parse(bundled))
 {

@@ -4,6 +4,7 @@ import hashlib
 import json
 import shutil
 import subprocess
+import xml.etree.ElementTree as ET
 
 root = Path(__file__).resolve().parent.parent
 target = (root / "artifacts/public-source").resolve()
@@ -29,5 +30,5 @@ for name in paths:
     shutil.copy2(root / name, destination)
     assert hashlib.sha256(destination.read_bytes()).digest() == hashlib.sha256((root / name).read_bytes()).digest()
 record = {"files": len(paths), "removedDeveloperFiles": removed, "sourceRevision": git("rev-parse", "HEAD").decode().strip()}
-(root / ".tools/public-export-v088.json").write_text(json.dumps(record, indent=2), encoding="utf-8")
+(root / (".tools/public-export-v"+ET.parse(root/"windows/TVBox.Windows/TVBox.Windows.csproj").findtext(".//Version").replace(".","")+".json")).write_text(json.dumps(record, indent=2), encoding="utf-8")
 print(f"Exported {len(paths)} source files; removed {len(removed)} developer records from current public tree")

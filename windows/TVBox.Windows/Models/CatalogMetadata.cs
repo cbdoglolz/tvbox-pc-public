@@ -1,4 +1,4 @@
-using System.Text.Json.Serialization;
+﻿using System.Text.Json.Serialization;
 using TVBoxForWindows.Core;
 
 namespace TVBoxForWindows.Models;
@@ -81,7 +81,7 @@ public partial class CatalogItem
     public string PrimaryRatingProvider { get; set; } = "douban";
     [JsonIgnore] public string CardSubtitle => (Year.Length > 0 && !Subtitle.Contains(Year, StringComparison.Ordinal) ? Year + (Subtitle.Length > 0 ? " / " : "") : "") + Subtitle;
     [JsonIgnore] public string WorkKey => !string.IsNullOrEmpty(IdentityKey) ? IdentityKey : string.IsNullOrEmpty(Id) ? "" :
-        Provider == "tmdb" ? $"tmdb@{Kind}:{Id}" + (SelectedSeason >= 0 ? $":s{SelectedSeason}" : "") : "douban@" + Id;
+        Provider == "tmdb" ? $"tmdb@{Kind}:{Id}" + (SelectedSeason >= 0 ? $":s{SelectedSeason}" : "") : Provider=="anilist" ? "anilist@"+Id : "douban@"+Id;
     [JsonIgnore] public string PrimaryRatingText => GetRating(PrimaryRatingProvider).Label;
     [JsonIgnore] public string DoubanScore => CompactScore("douban", "豆瓣");
     [JsonIgnore] public string TmdbScore => CompactScore("tmdb", "TMDB");
@@ -107,7 +107,7 @@ public partial class CatalogItem
     }
     [JsonIgnore] public string SecondaryRatingText => Setting.GetBool("catalog_secondary_rating", true) ? string.Join(" · ", Ratings.Where(r => r.Provider is "douban" or "tmdb" && r.Provider != PrimaryRatingProvider && r.HasScore).Select(r => r.Label)) : "";
     public WorkRating GetRating(string provider) => Ratings.FirstOrDefault(r => r.Provider == provider) ??
-        new WorkRating(provider, provider == "douban" ? Rating : null, null, MetadataFetchedAt, provider == "douban" ? "豆瓣" : "尚未获取");
+        new WorkRating(provider, provider == "douban" && Provider=="douban" ? Rating : null, null, MetadataFetchedAt, provider == "douban" ? "豆瓣" : "尚未获取");
     public CatalogItem Copy() { var copy = JsonUtil.Deserialize<CatalogItem>(JsonUtil.Serialize(this)); copy.ArtworkResolved = ArtworkResolved; return copy; }
     public void NotifyMetadataChanged()
     {

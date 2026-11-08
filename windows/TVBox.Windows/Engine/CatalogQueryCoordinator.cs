@@ -42,6 +42,7 @@ public sealed class CatalogQueryCoordinator(ICatalogQueryProvider provider = nul
         var countries = string.IsNullOrEmpty(query.Keyword) && query.Countries.Count > 0 && !query.Countries.Contains("OTHER") ? query.Countries : new List<string> { "" };
         var kinds = query.Provider == "douban" && query.Keyword.Trim().Length > 0 ? new[] { query.Kinds.First() } : query.Kinds.ToArray();
         var shards = kinds.SelectMany(kind => countries.Select(country => (Key: kind + ":" + country, Kind: kind, Country: country))).ToList();
+        if(query.Provider=="anilist")shards=new(){("anime:","tv","")};
         if (query.Collection == "douban:top250") shards = new() { ("movie:", "movie", "") };
         var before = CatalogFilters.Apply(state.Candidates, query).Count;
         using var parallel = new SemaphoreSlim(3);
@@ -93,6 +94,19 @@ public sealed class CatalogQueryCoordinator(ICatalogQueryProvider provider = nul
         if (query.Provider == "tmdb" && query.RatingProvider != "tmdb" && (query.EffectiveSort is "rating" or "votes" || query.MinimumRating != null)) state.ScopeNote += "；外部评分未关联完整，筛选和排序仅覆盖已获得的对应评分";
         if (query.RatingProvider == "imdb" && (query.MinimumRating != null || query.MinimumVotes != null)) state.ScopeNote += "；尚无可靠IMDb评分数据";
         Save(state); return state;
+    }
+    public async Task<CatalogQueryState> RefreshHeadAsync(CatalogQueryState previous,CancellationToken ct)
+    {
+        var state=JsonUtil.Deserialize<CatalogQueryState>(JsonUtil.Serialize(previous));var query=state.Query;
+        var kinds=query.Provider=="anilist"?new[]{"tv"}:query.Provider=="douban"&&query.Keyword.Length>0?new[]{query.Kinds.First()}:query.Kinds;
+        var countries=query.Countries.Count>0&&!query.Countries.Contains("OTHER")?query.Countries:new List<string>{""};
+        var pages=new List<CatalogProviderPage>();
+        foreach(var kind in kinds)foreach(var country in countries)pages.Add(await _provider.FetchAsync(query,kind,1,country,ct));
+        ct.ThrowIfCancellationRequested();
+        foreach(var item in pages.SelectMany(p=>p.Items)){state.Candidates.RemoveAll(w=>w.WorkKey==item.WorkKey);state.Candidates.Add(item);}
+        // Preserve loaded waterfall, pagination cursor and scroll position while refreshing the head.
+        state.Items=CatalogFilters.Apply(state.Candidates,query);state.IsStale=pages.Any(p=>p.IsStale);state.ScopeNote=string.Join("；",pages.Select(p=>p.ScopeNote).Distinct());
+        Save(state);return state;
     }
     public CatalogQueryState QueryLocal(CatalogQuery query, IEnumerable<CatalogItem> collection)
     {

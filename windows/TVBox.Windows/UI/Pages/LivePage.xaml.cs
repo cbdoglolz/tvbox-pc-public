@@ -19,6 +19,8 @@ namespace TVBoxForWindows.UI.Pages;
 public sealed partial class LivePage : Page, INavigationPlayback
 {
     PlayerCore _core;                          // 本页私有播放内核
+    List<Models.Live> _sportsSources;
+    CancellationTokenSource _sportsCts;
     FlyleafHostBinding _hostBinding;
     Models.Live _live;                         // 当前直播源
     LiveChannel _current;                      // 当前播放频道
@@ -100,6 +102,24 @@ public sealed partial class LivePage : Page, INavigationPlayback
         InitPlayer();
         GuidePanel.Visibility = Visibility.Collapsed;
         GuideInfo.IsOpen = false;
+        if(e.Parameter is SportsLiveArgs sports) {
+            _sportsSources=sports.Sources; LivePageTitle.Text="体育";
+            SportsRefresh.Visibility=SportsSettings.Visibility=Visibility.Visible;
+            if(_sportsSources.Count==0) {
+                SetCatalogLoading(true);
+                await App.Main.InitialPrivateRestoreTask;
+                if(!_isNavigatedActive||navigationGeneration!=_navigationGeneration)return;
+                _sportsSources=PrivateSubscriptions.SportsLives;SetCatalogLoading(false);
+            }
+            var configured=_sportsSources.Count;
+            await PrepareSportsSources(navigationGeneration);
+            if(!_isNavigatedActive||navigationGeneration!=_navigationGeneration)return;
+            RefreshLives();
+            if(_sportsSources.Count==0){GroupTitle.Text="体育";ShowInfo(configured==0?"请先在站点页面添加私人订阅，检查更新后即可选择体育频道。":"此订阅的体育频道表暂不可用，原订阅已保留；可点击刷新重试。",InfoBarSeverity.Informational);GuidePanel.Visibility=Visibility.Collapsed;}
+            return;
+        }
+        _sportsSources=null;
+        SportsRefresh.Visibility=SportsSettings.Visibility=Visibility.Collapsed;
 
         // A saved video configuration can populate embedded live sources during
         // startup. Wait for that one-time restore before deciding this is an empty
@@ -140,6 +160,7 @@ public sealed partial class LivePage : Page, INavigationPlayback
         _pendingSeekRequestId = 0;
         UpdateLoadingIndicator();
         _navigationGeneration++;
+        _sportsCts?.Cancel();
         LiveConfigService.Instance.Loaded -= OnConfigLoaded;
         _linePanelMutationVersion++;
         _channelPanelMutationVersion++;
@@ -458,7 +479,7 @@ public sealed partial class LivePage : Page, INavigationPlayback
     void RefreshLives()
     {
         InvalidateLiveLoad();
-        var lives = LiveConfigService.Instance.Lives;
+        var lives = _sportsSources ?? LiveConfigService.Instance.Lives;
         if (lives.Count == 0)
         {
             SetCatalogLoading(false);
@@ -475,10 +496,29 @@ public sealed partial class LivePage : Page, INavigationPlayback
         }
         _updating = true;
         LiveCombo.ItemsSource = lives;
-        var home = LiveConfigService.Instance.Home;
+        var home = _sportsSources==null ? LiveConfigService.Instance.Home : lives[0];
         LiveCombo.SelectedItem = lives.Contains(home) ? home : lives[0];
         _updating = false;
         _ = LoadLive(LiveCombo.SelectedItem as Models.Live);
+    }
+
+    void OnSportsSettings(object sender,RoutedEventArgs e)=>App.Main.OpenSiteSettings();
+    async Task PrepareSportsSources(int generation)
+    {
+        _sportsCts?.Cancel();_sportsCts=new();SetCatalogLoading(true);SportsRefresh.IsEnabled=false;GroupTitle.Text="正在检查体育频道表…";
+        try {var sources=await SportsCatalog.Load(_sportsSources,_sportsCts.Token);if(_isNavigatedActive&&generation==_navigationGeneration)_sportsSources=sources;}
+        catch(OperationCanceledException){}
+        finally{if(_isNavigatedActive&&generation==_navigationGeneration){SetCatalogLoading(false);SportsRefresh.IsEnabled=true;}}
+    }
+    async void OnRefreshSports(object sender,RoutedEventArgs e)
+    {
+        SportsRefresh.IsEnabled=false;var generation=_navigationGeneration;
+        try {
+            await PrivateSubscriptions.RefreshAtStartup();
+            if(!_isNavigatedActive||generation!=_navigationGeneration)return;
+            _sportsSources=PrivateSubscriptions.SportsLives;await PrepareSportsSources(generation);if(!_isNavigatedActive||generation!=_navigationGeneration)return;RefreshLives();
+            ShowInfo("已检查订阅；选择体育频道开始播放。四个Android专用入口的兼容状态见站点页面。",InfoBarSeverity.Informational);
+        }finally{SportsRefresh.IsEnabled=true;}
     }
 
     void OnLiveChanged(object sender, SelectionChangedEventArgs e)
@@ -486,7 +526,7 @@ public sealed partial class LivePage : Page, INavigationPlayback
         if (_updating) return;
         var live = LiveCombo.SelectedItem as Models.Live;
         if (live == null) return;
-        LiveConfigService.Instance.SetHome(live);
+        if(_sportsSources==null)LiveConfigService.Instance.SetHome(live);
         _ = LoadLive(live);
     }
 
@@ -502,6 +542,8 @@ public sealed partial class LivePage : Page, INavigationPlayback
             await LiveConfigService.Instance.GetChannels(live);
             if (!IsCurrentLiveLoad(live, loadCts, generation)) return;
 
+            if(_sportsSources!=null)SportsChannels.Filter(live);
+
             _live = live;
             RebuildAllChannels();
             var items = live.Groups.Where(g => g.Channel.Count > 0).Select(g => new LiveGroupItem(g)).ToList();
@@ -510,7 +552,7 @@ public sealed partial class LivePage : Page, INavigationPlayback
             GroupList.SelectedIndex = -1;
             _updating = false;
             _currentGroupItem = null;
-            if (items.Count == 0) { ChannelList.ItemsSource = null; return; }
+            if (items.Count == 0) { ChannelList.ItemsSource = null; if(_sportsSources!=null)ShowInfo("此频道表未找到体育频道，请切换其他频道表。",InfoBarSeverity.Informational);return; }
             int idx = items.FindIndex(i => !i.Group.IsHidden);
             GroupList.SelectedIndex = idx < 0 ? 0 : idx; // 触发 OnGroupChanged
         }
@@ -1629,9 +1671,8 @@ public sealed partial class LivePage : Page, INavigationPlayback
 
     void ShowInfo(string msg, InfoBarSeverity severity)
     {
-        PlayInfo.Severity = severity;
-        PlayInfo.Message = msg;
-        PlayInfo.IsOpen = true;
+        PlayInfo.IsOpen = false;
+        App.Main.ShowNotice(msg,severity);
     }
 }
 

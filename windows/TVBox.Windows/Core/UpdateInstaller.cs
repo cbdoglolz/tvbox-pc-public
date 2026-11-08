@@ -27,7 +27,7 @@ public static class UpdateInstaller
         var manifest = Path.Combine(operation, "install.json");
         if (!DurableJsonFile.Write(manifest, JsonUtil.Serialize(new
         {
-            staged.Version, InstallRoot = root, StageRoot = stage, BackupRoot = Path.Combine(operation, "backup"),
+            staged.Version, FromVersion = typeof(UpdateInstaller).Assembly.GetName().Version?.ToString(3), InstallRoot = root, StageRoot = stage, BackupRoot = Path.Combine(operation, "backup"),
             ProcessId = process.Id, ProcessStartTicks = process.StartTime.ToUniversalTime().Ticks, Files = files,
         }))) throw new IOException("无法保存更新安装计划");
         return manifest;

@@ -12,35 +12,23 @@
             <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
             <StackPanel Orientation="Horizontal" Spacing="10"><Button Content="←" Click="OnBackToOrigin" ToolTipService.ToolTip="返回来源页面"/><TextBlock x:Name="PageTitle" Text="影视目录" FontSize="22" FontWeight="SemiBold" VerticalAlignment="Center"/></StackPanel>
             <ComboBox x:Name="ProviderCombo" Grid.Column="1" SelectedIndex="0" SelectionChanged="OnProviderChanged" MinWidth="120" AutomationProperties.Name="资料目录提供方"><ComboBoxItem Content="豆瓣目录"/><ComboBoxItem Content="TMDB目录"/></ComboBox>
-            <Button Grid.Column="2" Content="更多筛选 ▾"><Button.Flyout><Flyout Placement="Bottom" Opening="OnFiltersOpening"><Flyout.FlyoutPresenterStyle><Style TargetType="FlyoutPresenter"><Setter Property="MaxWidth" Value="920"/><Setter Property="Padding" Value="12"/></Style></Flyout.FlyoutPresenterStyle><ScrollViewer x:Name="FilterScroll" MaxHeight="380" HorizontalScrollBarVisibility="Disabled"><controls:CatalogFilterBar x:Name="Filters"/></ScrollViewer></Flyout></Button.Flyout></Button>
-            <Button Grid.Column="3" Content="我的筛选">
-                <Button.Flyout><Flyout><StackPanel Width="280" Spacing="8">
-                    <ComboBox x:Name="PresetCombo" PlaceholderText="选择已保存筛选" DisplayMemberPath="Name" SelectionChanged="OnPresetChanged" HorizontalAlignment="Stretch"/>
-                    <TextBox x:Name="PresetName" PlaceholderText="预设名称" MaxLength="60"/>
-                    <CheckBox x:Name="PresetPinned" Content="固定到首页"/>
-                    <StackPanel Orientation="Horizontal" Spacing="8"><Button Content="保存/更新" Click="OnSavePreset"/><Button Content="删除预设" Click="OnDeletePreset"/></StackPanel>
-                </StackPanel></Flyout></Button.Flyout>
-            </Button>
+            <Button Grid.Column="2"><Button.Content><controls:FilterCountBadge x:Name="FilterBadge"/></Button.Content><Button.Flyout><Flyout Placement="Bottom" Opening="OnFiltersOpening"><Flyout.FlyoutPresenterStyle><Style TargetType="FlyoutPresenter"><Setter Property="MaxWidth" Value="920"/><Setter Property="Padding" Value="12"/></Style></Flyout.FlyoutPresenterStyle><ScrollViewer x:Name="FilterScroll" MaxHeight="380" HorizontalScrollBarVisibility="Disabled"><controls:CatalogFilterBar x:Name="Filters"/></ScrollViewer></Flyout></Button.Flyout></Button>
+            <Button Grid.Column="3" Content="清除筛选" Click="OnClearFilters"/>
         </Grid>
-        <Grid Grid.Row="1" ColumnSpacing="8">
-            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+        <Grid Grid.Row="1" ColumnSpacing="6">
+            <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
             <ComboBox x:Name="SearchScopeCombo" SelectedIndex="0" SelectionChanged="OnSearchScopeChanged" AutomationProperties.Name="目录搜索范围"><ComboBoxItem Content="当前片库"/><ComboBoxItem Content="全部影视 · 保留筛选"/></ComboBox>
             <AutoSuggestBox x:Name="KeywordBox" Grid.Column="1" QueryIcon="Find" PlaceholderText="在当前分类搜索，关键词和条件可叠加" TextChanged="OnKeywordChanged" QuerySubmitted="OnSearchSubmitted"/>
-            <Button Grid.Column="2" Content="刷新" Click="OnRefresh"/>
-            <Button Grid.Column="3" Content="资源搜索" Click="OnAdvancedSearch" ToolTipService.ToolTip="高级：按原资源站查看原始结果"/>
+            <Button Grid.Column="2" Content="网格 / 列表" Click="OnViewMode"/>
+            <controls:SortDirectionButton Grid.Column="3" x:Name="QuickDirection"/>
+            <Button Grid.Column="4" Content="刷新" Click="OnRefresh"/>
+            <Button Grid.Column="5" Content="按资源站搜索" Click="OnAdvancedSearch" ToolTipService.ToolTip="直接搜索启用的资源站"/>
         </Grid>
         <StackPanel Grid.Row="2" Spacing="8">
             <ListView x:Name="ChannelTabs" Height="44" SelectionMode="Single" SelectionChanged="OnChannelChanged" ScrollViewer.HorizontalScrollBarVisibility="Auto" ScrollViewer.VerticalScrollBarVisibility="Disabled">
                 <ListView.ItemsPanel><ItemsPanelTemplate><ItemsStackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ListView.ItemsPanel>
                 <x:String>推荐</x:String><x:String>热门</x:String><x:String>最新</x:String><x:String>高分</x:String>
             </ListView>
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <ComboBox x:Name="SearchField" Visibility="Collapsed" Header="搜索字段" SelectedIndex="0" ToolTipService.ToolTip="当前目录支持片名；演员/导演远程检索尚未接入，不会冒充片名搜索">
-                    <ComboBoxItem Content="片名"/><ComboBoxItem Content="演员 · 暂未接入" IsEnabled="False"/><ComboBoxItem Content="导演 · 暂未接入" IsEnabled="False"/>
-                </ComboBox>
-                <Button Content="网格 / 列表" Click="OnViewMode" VerticalAlignment="Bottom"/>
-                <controls:SortDirectionButton x:Name="QuickDirection" VerticalAlignment="Bottom"/>
-            </StackPanel>
             <controls:CatalogFacetChips x:Name="SelectedConditions"/>
         </StackPanel>
         <StackPanel Grid.Row="3" Spacing="3">
