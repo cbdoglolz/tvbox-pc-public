@@ -34,12 +34,12 @@ internal static class CatalogV089Regression
             Net.ProbeHandler.ResponseOverride=req=>{
                 if(req.RequestUri.Host=="redirect.example") {var redirect=new System.Net.Http.HttpResponseMessage(System.Net.HttpStatusCode.Redirect);redirect.Headers.Location=new Uri("https://target.example/list");return redirect;}
                 if(req.RequestUri.Host=="target.example")stripped=!req.Headers.Contains("Authorization")&&!req.Headers.Contains("Cookie");
-                var text=req.RequestUri.Host=="bad.example"?"<html>unavailable</html>":"#EXTM3U\n#EXTINF:-1 group-title=\"央视\",CCTV16\nhttps://media.example/live.m3u8\n#EXTINF:-1 group-title=\"央视\",CCTV1\nhttps://media.example/other.m3u8";
+                var text=req.RequestUri.Host=="creator.example"?"#EXTM3U\n#EXTINF:-1 group-title=\"体育\",篮球人物\nhttps://media.example/creator.m3u8":req.RequestUri.Host=="bad.example"?"<html>unavailable</html>":"#EXTM3U\n#EXTINF:-1 group-title=\"央视\",CCTV16\nhttps://media.example/live.m3u8\n#EXTINF:-1 group-title=\"央视\",CCTV1\nhttps://media.example/other.m3u8";
                 return new(System.Net.HttpStatusCode.OK){Content=new System.Net.Http.StringContent(text)};
             };
-            var sources=Enumerable.Range(0,6).Select(i=>new Live{Name="fixture"+i,Url=$"https://sport{i}.example/list"}).ToList();sources.Add(new(){Name="invalid",Url="https://bad.example/list"});sources.Add(new(){Name="redirect",Url="https://redirect.example/list",Header=new(){["Cookie"]="fixture",["Authorization"]="fixture"}});
+            var sources=Enumerable.Range(0,6).Select(i=>new Live{Name="fixture"+i,Url=$"https://sport{i}.example/list"}).ToList();sources.Add(new(){Name="creator",Url="https://creator.example/list"});sources.Add(new(){Name="invalid",Url="https://bad.example/list"});sources.Add(new(){Name="redirect",Url="https://redirect.example/list",Header=new(){["Cookie"]="fixture",["Authorization"]="fixture"}});
             var loaded=await TVBoxForWindows.Live.SportsCatalog.Load(sources,default);
-            check(loaded.Count==7&&loaded.All(l=>l.Groups.Single().Channel.Single().Name=="CCTV16")&&maxRunning<=3&&maxRunning>1,"v089 sports concurrently validates at most three playlists, drops HTML and exposes only real sport channels");
+            check(loaded.Count==8&&loaded.Take(7).All(l=>l.Groups.Single().Channel.Single().Name=="CCTV16")&&loaded.Last().Name=="creator"&&maxRunning<=3&&maxRunning>1,"v089 sports concurrently validates at most three playlists, drops HTML and prioritizes broadcast sport channels over creators");
             check(stripped,"v089 cross-host playlist redirect never forwards private cookie or authorization");
         }finally{Net.ProbeHandler.BeforeSend=null;Net.ProbeHandler.ResponseOverride=null;}
         const string anime="""{"data":{"Page":{"pageInfo":{"hasNextPage":true},"media":[{"id":900,"title":{"native":"テスト","romaji":"Test","english":null},"synonyms":[],"format":"TV","startDate":{"year":2025,"month":4,"day":2},"episodes":12,"averageScore":null,"coverImage":{"large":"https://example.test/poster.jpg"},"bannerImage":null,"genres":["Action"],"countryOfOrigin":"JP","popularity":100}]}}}""";
