@@ -24,6 +24,7 @@ public sealed partial class VodPage : Page
     readonly List<FolderLevel> _folders = new();
     List<VodClass> _types = new();
     Site _site;
+    bool _sports;
     VodClass _type;
     int _page = 1;
     int? _pageCount;
@@ -54,6 +55,8 @@ public sealed partial class VodPage : Page
     protected override void OnNavigatedTo(NavigationEventArgs e)
     {
         base.OnNavigatedTo(e);
+        if (e.Parameter is string mode) { _sports = mode == "sports"; _configUrl = null; }
+        ResourceTitle.Text = _sports ? "体育 · 直播与回放" : "资源浏览";
         if (_configUrl != VodConfigService.Instance.Config?.Url) InitSites();
         RefreshContinue();
     }
@@ -65,7 +68,7 @@ public sealed partial class VodPage : Page
     {
         _configUrl = VodConfigService.Instance.Config?.Url;
         RefreshContinue();
-        var sites = VodConfigService.Instance.Sites.Where(s => !s.IsHidden).ToList();
+        var sites = SiteRegistry.All.Where(s => !s.IsHidden && !SiteRegistry.Preference(s.Key).Removed && (!_sports || PrivateSubscriptions.IsSports(s))).ToList();
         _squelch = true;
         SiteCombo.ItemsSource = sites;
         var index = sites.FindIndex(s => s.Key == VodConfigService.Instance.Home.Key);
@@ -122,7 +125,9 @@ public sealed partial class VodPage : Page
         _end = true;
         MsgBar.IsOpen = false;
         EmptyText.Visibility = Visibility.Collapsed;
-        if (site == null) { EmptyText.Visibility = Visibility.Visible; return; }
+        if (site == null) { EmptyText.Text = _sports ? "请在站点页添加私人订阅，体育入口会显示在这里。" : "暂无站点"; EmptyText.Visibility = Visibility.Visible; return; }
+        if (PrivateSubscriptions.IsPrivate(site.Key) && !PrivateSubscriptions.Supported(site)) { Busy.IsActive = false; SourceStatusText.Text = site.Name; MsgBar.Title = "此来源需要Android兼容运行环境"; MsgBar.Message = "已读取到入口，但不是视频直链。当前Windows引擎无法执行该爬虫；未将其标记为可播放。"; MsgBar.IsOpen = true; return; }
+        if (site.Type == InternationalSources.SiteType) { Busy.IsActive = false; SourceStatusText.Text = site.Name + " · 实验来源"; MsgBar.Title = "按影片查找资源"; MsgBar.Message = "此来源没有独立海报目录。请在首页或搜索中进入影片详情，启用该站点后选择“搜索高清源”。尚未通过本机可播验证。"; MsgBar.IsOpen = true; return; }
         SourceStatusText.Text = $"正在连接 {site.Name}…";
         var started = System.Diagnostics.Stopwatch.StartNew();
         Busy.IsActive = true;

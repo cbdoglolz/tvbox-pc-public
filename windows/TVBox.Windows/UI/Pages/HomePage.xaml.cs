@@ -99,7 +99,7 @@ public sealed partial class HomePage : Page
     void OnProviderChanged(object sender, SelectionChangedEventArgs e)
     {
         if (!_ready) return; var switchWatch = System.Diagnostics.Stopwatch.StartNew();
-        if (Provider == "tmdb" && !TmdbCredentials.HasCredential) { App.Main.ShowNotice("TMDB目录需选填个人Key；豆瓣与普通看片无需配置。"); _ready = false; ProviderTabs.SelectedIndex = Setting.GetString("home_provider") == "netflix" ? 1 : 0; _ready = true; return; }
+        if (Provider == "tmdb" && !TmdbCredentials.HasCredential) { App.Main.ShowNotice("TMDB目录需要个人API Key，请前往设置页面添加；豆瓣与普通看片无需配置。"); _ready = false; ProviderTabs.SelectedIndex = Setting.GetString("home_provider") == "netflix" ? 1 : 0; _ready = true; return; }
         SavePosition(); _ready = false; PopulateCategories(); _ready = true;
         Setting.Put("home_provider", Provider); SwitchChannel();
         Logger.D("CatalogPerformance", $"ProviderSwitch {Provider}, cards={_items.Count}, ui-synchronous={switchWatch.Elapsed.TotalMilliseconds:0.0}ms");

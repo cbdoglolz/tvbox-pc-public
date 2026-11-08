@@ -151,6 +151,7 @@ public class LocalServer
 
     async Task HandleAsync(HttpListenerContext ctx)
     {
+        if (await Player.HlsConnectionRelay.HandleAsync(ctx)) return;
         ServerRequest req = null;
         ServerResponse res;
         try

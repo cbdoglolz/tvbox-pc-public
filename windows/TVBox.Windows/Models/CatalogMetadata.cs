@@ -79,6 +79,7 @@ public partial class CatalogItem
     public bool TmdbLinkSuppressed { get; set; }
     public DateTimeOffset? MetadataFetchedAt { get; set; }
     public string PrimaryRatingProvider { get; set; } = "douban";
+    [JsonIgnore] public string CardSubtitle => (Year.Length > 0 && !Subtitle.Contains(Year, StringComparison.Ordinal) ? Year + (Subtitle.Length > 0 ? " / " : "") : "") + Subtitle;
     [JsonIgnore] public string WorkKey => !string.IsNullOrEmpty(IdentityKey) ? IdentityKey : string.IsNullOrEmpty(Id) ? "" :
         Provider == "tmdb" ? $"tmdb@{Kind}:{Id}" + (SelectedSeason >= 0 ? $":s{SelectedSeason}" : "") : "douban@" + Id;
     [JsonIgnore] public string PrimaryRatingText => GetRating(PrimaryRatingProvider).Label;

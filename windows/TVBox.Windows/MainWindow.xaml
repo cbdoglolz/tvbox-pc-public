@@ -3,7 +3,7 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:controls="using:TVBoxForWindows.UI.Controls">
 
-    <Grid x:Name="RootGrid" Background="{ThemeResource DiscoveryBackground}">
+    <Grid x:Name="RootGrid" KeyboardAcceleratorPlacementMode="Hidden" Background="{ThemeResource DiscoveryBackground}">
         <VisualStateManager.VisualStateGroups>
             <VisualStateGroup x:Name="ShellWidthStates">
                 <VisualState x:Name="CompactShell">
@@ -59,7 +59,7 @@
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
                                 QueryIcon="Find"
-                                PlaceholderText="搜索影视作品  ·  Ctrl+K"
+                                PlaceholderText="搜索影视作品"
                                 GotFocus="OnGlobalSearchFocus" TextChanged="OnGlobalSearchTextChanged"
                                 QuerySubmitted="OnGlobalSearch">
                     <AutoSuggestBox.ItemTemplate><DataTemplate><controls:SearchSuggestionRow/></DataTemplate></AutoSuggestBox.ItemTemplate>
@@ -71,7 +71,7 @@
             </Button>
         </Grid>
 
-        <InfoBar x:Name="ActionNotice" Grid.Row="1" Canvas.ZIndex="30" IsOpen="False" Severity="Success" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24" MaxWidth="660"/>
+        <controls:NoticeStack x:Name="ActionNotice" Grid.Row="1" Canvas.ZIndex="80" Margin="24"/>
         <!-- 导航 + 内容 -->
         <NavigationView x:Name="Nav"
                         Grid.Row="1"
@@ -82,7 +82,7 @@
                         IsPaneToggleButtonVisible="False"
                         IsTitleBarAutoPaddingEnabled="False"
                         IsBackButtonVisible="Collapsed"
-                        IsSettingsVisible="True"
+                        IsSettingsVisible="False"
                         UseLayoutRounding="True"
                         ItemInvoked="OnNavInvoked">
             <NavigationView.Resources>
@@ -135,12 +135,14 @@
                                   Data="M10,4 C13.3137,4 16,6.68629 16,10 C16,13.3137 13.3137,16 10,16 C6.68629,16 4,13.3137 4,10 C4,9.84443 4.00591,9.69034 4.0175,9.53793 C4.03845,9.26258 3.83222,9.02239 3.55687,9.00144 C3.28152,8.98049 3.04133,9.18673 3.02038,9.46207 C3.00687,9.6397 3,9.8191 3,10 C3,13.866 6.13401,17 10,17 C13.866,17 17,13.866 17,10 C17,6.13401 13.866,3 10,3 C8.04094,3 6.27012,3.80499 5,5.10109 L5,3.5 C5,3.22386 4.77614,3 4.5,3 C4.22386,3 4,3.22386 4,3.5 L4,6.5 C4,6.77614 4.22386,7 4.5,7 L7.5,7 C7.77614,7 8,6.77614 8,6.5 C8,6.22386 7.77614,6 7.5,6 L5.52772,6 C6.62683,4.77191 8.2234,4 10,4 Z M10,6.5 C10,6.22386 9.77614,6 9.5,6 C9.22386,6 9,6.22386 9,6.5 L9,10.5 C9,10.7761 9.22386,11 9.5,11 L12.5,11 C12.7761,11 13,10.7761 13,10.5 C13,10.2239 12.7761,10 12.5,10 L10,10 Z"/>
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
+                <NavigationViewItem Content="体育" Tag="sports"><NavigationViewItem.Icon><SymbolIcon Symbol="Globe"/></NavigationViewItem.Icon></NavigationViewItem>
             </NavigationView.MenuItems>
             <NavigationView.FooterMenuItems>
-                <NavigationViewItem Content="站点" Tag="sites"><NavigationViewItem.Icon><SymbolIcon Symbol="Globe"/></NavigationViewItem.Icon></NavigationViewItem>
                 <NavigationViewItem SelectsOnInvoked="False" IsHitTestVisible="False" IsTabStop="False">
                     <NavigationViewItem.Content><StackPanel Spacing="3"><TextBlock x:Name="VersionLabel" FontSize="12"/><TextBlock x:Name="ReleaseDateLabel" FontSize="11" Opacity="0.65"/></StackPanel></NavigationViewItem.Content>
                 </NavigationViewItem>
+                <NavigationViewItem x:Name="SettingsNavItem" Content="设置" Tag="settings"><NavigationViewItem.Icon><SymbolIcon Symbol="Setting"/></NavigationViewItem.Icon></NavigationViewItem>
+                <NavigationViewItem Content="站点" Tag="sites"><NavigationViewItem.Icon><SymbolIcon Symbol="Globe"/></NavigationViewItem.Icon></NavigationViewItem>
             </NavigationView.FooterMenuItems>
             <Grid x:Name="PageHost">
                 <!-- 每个侧栏栏目拥有独立 Frame，切换栏目不会重建页面或丢失导航栈。 -->
@@ -153,7 +155,7 @@
                 <Frame x:Name="SearchFrame" Visibility="Collapsed"/>
                 <Frame x:Name="KeepFrame" Visibility="Collapsed"/>
                 <Frame x:Name="HistoryFrame" Visibility="Collapsed"/>
-                <Frame x:Name="SettingsFrame" Visibility="Collapsed"/><Frame x:Name="SitesFrame" Visibility="Collapsed"/>
+                <Frame x:Name="SettingsFrame" Visibility="Collapsed"/><Frame x:Name="SitesFrame" Visibility="Collapsed"/><Frame x:Name="SportsFrame" Visibility="Collapsed"/>
 
                 <!-- 配置公告 -->
                 <InfoBar x:Name="NoticeBar"

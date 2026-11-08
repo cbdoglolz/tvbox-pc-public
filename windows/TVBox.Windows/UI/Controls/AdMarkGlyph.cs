@@ -20,6 +20,8 @@ public sealed class AdMarkGlyph : UserControl
         if (Mark == AdMark.Unknown) {
             grid.Children.Add(new Ellipse { Width = 21, Height = 21, Stroke = Brush(230, 176, 56), StrokeThickness = 1.5 });
             grid.Children.Add(new TextBlock { Text = "?", FontSize = 18, FontWeight = Microsoft.UI.Text.FontWeights.Bold, Foreground = Brush(230, 176, 56), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
+        } else if (Mark == AdMark.TextAds) {
+            grid.Children.Add(new TextBlock { Text = "文", FontSize = 16, Foreground = Brush(235, 169, 65), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center });
         } else if (Mark == AdMark.Ads) {
             grid.Children.Add((UIElement)Microsoft.UI.Xaml.Markup.XamlReader.Load("<Path xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' Fill='#F06470' Data='M5,8 L3,1 10,6 14,6 21,1 19,8 A9,9 0 1 1 5,8 Z'/>"));
             grid.Children.Add((UIElement)Microsoft.UI.Xaml.Markup.XamlReader.Load("<Path xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' Stroke='#421328' StrokeThickness='1.7' StrokeStartLineCap='Round' StrokeEndLineCap='Round' Data='M6,11 L9,12 M15,12 L18,11 M8,17 Q12,20 16,17'/>"));

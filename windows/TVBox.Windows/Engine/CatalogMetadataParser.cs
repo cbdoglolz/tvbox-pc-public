@@ -19,6 +19,8 @@ public static class CatalogMetadataParser
         if (rawType is "movie" or "tv") work.Kind = rawType;
         if (work.Year.Length == 0) work.Year = Regex.Match(Text(node, "year"), @"(?:19|20)\d{2}").Value;
         var chunks = work.Subtitle.Split('/').Select(s => s.Trim()).ToArray();
+        if (work.Year.Length == 0) work.Year = Regex.Match(work.Subtitle, @"(?<!\d)(?:18|19|20)\d{2}(?!\d)").Value;
+        if (work.Year.Length == 0) work.Year = Regex.Match(string.Join(" ", Strings(Get(node, "pubdate"))), @"(?:18|19|20)\d{2}").Value;
         var offset = chunks.Length > 0 && Regex.IsMatch(chunks[0], @"^\d{4}$") ? 1 : 0;
         work.RawCountries = Strings(Get(node, "countries"));
         if (work.RawCountries.Count == 0 && chunks.Length > offset) work.RawCountries = chunks[offset].Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();

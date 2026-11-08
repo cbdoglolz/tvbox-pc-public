@@ -2,7 +2,8 @@ using TVBoxForWindows.Models;
 
 namespace TVBoxForWindows
 {
-    internal static class App { public static void Post(Action action) => action(); }
+    internal static class App { public static void Post(Action action) => action(); public static NoticeStub Main {get;}=new(); }
+    internal class NoticeStub { public void ShowNotice(string message) {} }
 }
 namespace TVBoxForWindows.Models
 {

@@ -121,7 +121,7 @@ public sealed partial class MainWindow : Window
         Closed += (s, e) =>
         {
             _closed = true;
-            _noticeTimer?.Stop(); _badgeTimer?.Stop();
+            ActionNotice.Clear(); _badgeTimer?.Stop();
             ThemeManager.Changed -= ApplyDiscoveryTheme;
             if (_titleBarXamlRoot != null)
             {
@@ -147,15 +147,8 @@ public sealed partial class MainWindow : Window
         Startup();
     }
 
-    Microsoft.UI.Dispatching.DispatcherQueueTimer _noticeTimer;
-    public void ShowNotice(string message)
-    {
-        ActionNotice.Message = message; ActionNotice.IsOpen = true;
-        _noticeTimer ??= DispatcherQueue.CreateTimer(); _noticeTimer.Stop();
-        _noticeTimer.Interval = TimeSpan.FromSeconds(8); _noticeTimer.IsRepeating = false;
-        _noticeTimer.Tick -= CloseNotice; _noticeTimer.Tick += CloseNotice; _noticeTimer.Start();
-    }
-    void CloseNotice(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args) => ActionNotice.IsOpen = false;
+
+    public void ShowNotice(string message, InfoBarSeverity severity = InfoBarSeverity.Success) => ActionNotice.Show(message, severity);
     void OnToggleTheme(object sender, RoutedEventArgs e) => ThemeManager.SetMode(ThemeManager.Theme == ElementTheme.Dark ? "light" : "dark");
     void ApplyDiscoveryTheme()
     {
@@ -211,6 +204,7 @@ public sealed partial class MainWindow : Window
     async void OnRootGridLoaded(object sender, RoutedEventArgs e)
     {
         RootGrid.Loaded -= OnRootGridLoaded;
+        _ = PrivateSubscriptions.RefreshAtStartup();
         var path = System.IO.Path.Combine(AppPaths.IconDir, "icon-title.png");
         try
         {
@@ -939,13 +933,14 @@ public sealed partial class MainWindow : Window
     void OnNavInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
     {
         if (_sourceSetupRequired) return;
-        if (args.IsSettingsInvoked)
+        if (args.IsSettingsInvoked || args.InvokedItemContainer?.Tag as string == "settings")
         {
             ActivateSection("settings", SettingsFrame, typeof(SettingsPage));
             return;
         }
         var tag = args.InvokedItemContainer?.Tag as string;
         Logger.D("UiNavigation", tag ?? "settings");
+        if (tag == "sports") { ActivateSection("sports", SportsFrame, typeof(VodPage), "sports"); return; }
         if (tag == "sites") { ActivateSection("sites", SitesFrame, typeof(SitesPage)); return; }
         if (tag == "player") { ActivateSection("player", PlaybackFrame, typeof(PlayerPage)); return; }
         if (tag is "movie" or "tv" or "anime" or "documentary" or "variety")
@@ -1019,6 +1014,7 @@ public sealed partial class MainWindow : Window
         "history" => HistoryFrame,
         "settings" => SettingsFrame,
         "sites" => SitesFrame,
+        "sports" => SportsFrame,
         _ => VodFrame,
     };
 
@@ -1035,6 +1031,7 @@ public sealed partial class MainWindow : Window
         yield return HistoryFrame;
         yield return SettingsFrame;
         yield return SitesFrame;
+        yield return SportsFrame;
     }
 
     static void PausePlayback(Frame frame)
@@ -1064,7 +1061,7 @@ public sealed partial class MainWindow : Window
 
     void SelectNav(string tag)
     {
-        if (tag == "settings") { Nav.SelectedItem = Nav.SettingsItem; return; }
+        if (tag == "settings") { Nav.SelectedItem = SettingsNavItem; return; }
         foreach (var item in Nav.MenuItems.Concat(Nav.FooterMenuItems).OfType<NavigationViewItem>())
             if ((item.Tag as string) == tag) { Nav.SelectedItem = item; return; }
     }

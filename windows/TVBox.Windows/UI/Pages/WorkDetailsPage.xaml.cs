@@ -118,6 +118,7 @@ public sealed partial class WorkDetailsPage : Page
                 ToolTipService.SetToolTip(correct, "TMDB资料或评分对应错片时，搜索片名或输入TMDB ID重新绑定；也可清除错误匹配并暂停自动关联。收藏与观看进度保留。");
                 correct.Click += OnCorrectMatch; row.Children.Add(correct);
             }
+            if (provider == "tmdb" && !TmdbCredentials.HasCredential) { var configure = new Button { Content = "去配置" }; configure.Click += (_, _) => App.Main.OpenMetadataSettings(); row.Children.Add(configure); }
             Ratings.Children.Add(new Border { Child = row, Padding = new(10, 7, 10, 7), CornerRadius = new(10), BorderThickness = new(1), BorderBrush = new SolidColorBrush(Windows.UI.Color.FromArgb(60, 130, 120, 160)) });
         }
         var resumeSeries = _work.Kind == "tv" && WorkMediaService.TmdbId(_work) is int seriesId ? Stores.GetHistories(VodConfigService.Cid).Where(h => { var saved = CatalogLibrary.FromHistory(h); return saved.Kind == "tv" && WorkMediaService.TmdbId(saved) == seriesId; }).MaxBy(h => h.CreateTime) : null;

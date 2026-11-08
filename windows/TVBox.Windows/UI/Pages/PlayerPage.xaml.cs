@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Numerics;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
@@ -39,6 +39,7 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
     Microsoft.UI.Dispatching.DispatcherQueueTimer _hideTimer;   // 3 秒无操作淡出控制层
     Microsoft.UI.Dispatching.DispatcherQueueTimer _toastTimer;  // Toast 自动关闭
     Microsoft.UI.Dispatching.DispatcherQueueTimer _seekTimer;   // 合并拖动和连续快进/快退
+    readonly HashSet<int> _unavailableFlags = new();
     readonly HashSet<int> _triedFlags = new();     // 自动换源已尝试过的线路
     string _refreshRetryKey;                       // 失效签名/临时 HTTP 错误时同线路只刷新一次
     List<DanmakuSourceItem> _danmakuSources = new();
@@ -196,9 +197,9 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
         if (_toastTimer == null)
         {
             _toastTimer = DispatcherQueue.CreateTimer();
-            _toastTimer.Interval = TimeSpan.FromSeconds(8);
+            _toastTimer.Interval = TimeSpan.FromSeconds(3);
             _toastTimer.IsRepeating = false;
-            _toastTimer.Tick += (s, e) => Toast.IsOpen = false;
+            _toastTimer.Tick += (s, e) => { if (ErrorBar.IsOpen) ErrorBar.IsOpen = false; else Toast.IsOpen = false; };
         }
         if (_seekTimer == null)
         {
@@ -445,6 +446,7 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
     /// <summary>播放/解析失败 → 自动换源：先在其他线路找同名集，全部试过仍失败才报错手动选。</summary>
     void OnPlayError(string msg)
     {
+        if (_session != null) { _unavailableFlags.Add(_session.FlagIndex); QueueSelectionMutation(RefreshSelectionPanel); }
         RecordSourceFailure();
         _isBuffering = false;
         CancelPendingSeek();
@@ -707,7 +709,7 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
         _session.EpisodeIndex = idx;
         CancelSourceRefresh();
         if (_session.History != null) _session.History.Position = 0;
-        _triedFlags.Clear();
+        _triedFlags.Clear(); _unavailableFlags.Clear();
         _ = PlayCurrent(0);
     }
 
@@ -789,7 +791,7 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
         _session.EpisodeIndex = idx;
         CancelSourceRefresh();
         if (_session.History != null) _session.History.Position = 0;
-        _triedFlags.Clear();
+        _triedFlags.Clear(); _unavailableFlags.Clear();
         _ = PlayCurrent(0);
     }
 
@@ -1426,7 +1428,14 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
     // ---------- 控制层显隐 ----------
 
     bool _controlsVisible = true;
-    void OnPointerMoved(object sender, PointerRoutedEventArgs e) { if (_controlsVisible) ShowControls(); }
+    bool _pointerOverControls;
+    void OnPointerMoved(object sender, PointerRoutedEventArgs e)
+    {
+        _pointerOverControls = false;
+        for (var node = e.OriginalSource as DependencyObject; node != null && node != ControlLayer; node = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(node))
+            if (node is Microsoft.UI.Xaml.Controls.Primitives.ButtonBase or ComboBox or Slider or TextBox or NumberBox) { _pointerOverControls = true; break; }
+        if (_controlsVisible) ShowControls();
+    }
 
     void OnPlayerTapped(object sender, TappedRoutedEventArgs e)
     {
@@ -1465,7 +1474,7 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
 
     void MaybeHideControls()
     {
-        if (_closed || _menuOpen > 0) return;
+        if (_closed || _menuOpen > 0 || _pointerOverControls) return;
         if (_core == null || !_core.IsPlaying) return; // 暂停/加载中不隐藏
         HideControls();
     }
@@ -1964,19 +1973,10 @@ public sealed partial class PlayerPage : Page, INavigationPlayback
         LoadingOverlay.Visibility = Visibility.Collapsed;
     }
 
-    readonly Queue<string> _toastQueue = new();
-    void ShowToast(string msg)
-    {
-        if (_closed) return; msg ??= ""; if (msg.Length == 0) return;
-        if (Toast.IsOpen || ErrorBar.IsOpen) { if (Toast.Message != msg && !_toastQueue.Contains(msg)) { if (_toastQueue.Count >= 6) _toastQueue.Dequeue(); _toastQueue.Enqueue(msg); } return; }
-        Toast.Message = msg; Toast.IsOpen = true; _toastTimer?.Stop(); _toastTimer?.Start();
-    }
-    void OnToastClosed(InfoBar sender, InfoBarClosedEventArgs args) { _toastTimer?.Stop(); if (!ErrorBar.IsOpen && _toastQueue.TryDequeue(out var next)) ShowToast(next); }
-    void OnErrorClosed(InfoBar sender, InfoBarClosedEventArgs args) { if (!Toast.IsOpen && _toastQueue.TryDequeue(out var next)) ShowToast(next); }
-    void ShowError(string msg)
-    {
-        _isBuffering = false; HideLoading(); ErrorBar.Message = msg ?? ""; ErrorBar.IsOpen = true; Toast.IsOpen = false;
-    }
+    void ShowToast(string msg) { if (!_closed) App.Main.ShowNotice(msg, InfoBarSeverity.Informational); }
+    void OnToastClosed(InfoBar sender, InfoBarClosedEventArgs args) { }
+    void OnErrorClosed(InfoBar sender, InfoBarClosedEventArgs args) { }
+    void ShowError(string msg) { _isBuffering = false; HideLoading(); if (!_closed) App.Main.ShowNotice(msg, InfoBarSeverity.Error); }
 
     static string Fmt(long ms)
     {
@@ -2028,6 +2028,9 @@ public sealed class PlayerSelectionItem
     public string AdSiteKey { get; init; } = "";
     public bool HasAdSite => AdSiteKey.Length > 0;
     public string AdLabel { get; init; } = "";
+    public bool IsUnavailable { get; init; }
+    public double LabelOpacity => IsUnavailable || Value is int index && index < 0 ? 0.58 : 1;
+    public string LabelColor => IsUnavailable || Value is int index && index < 0 ? "#FFB0B0B0" : "#FFFFFFFF";
     public string Label { get; }
     public string Detail { get; init; } = "";
     public string DetailColor { get; init; } = "#FFAAAAAA";

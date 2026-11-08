@@ -68,6 +68,12 @@
       <Compile Include="../../windows/TVBox.Windows/Engine/ArtworkRequestGate.cs" Link="Engine/ArtworkRequestGate.cs" />
 </ItemGroup>
   <ItemGroup>
+    <Compile Include="../../windows/TVBox.Windows/Models/PlaybackNetworkPolicy.cs" Link="Models/PlaybackNetworkPolicy.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Player/HlsConnectionRelay.cs" Link="Player/HlsConnectionRelay.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Core/PrivateSubscriptions.cs" Link="Core/PrivateSubscriptions.cs"/>
+    <Compile Include="../../windows/TVBox.Windows/Models/ModelJson.cs" Link="Models/ModelJson.cs"/>
+  </ItemGroup>
+  <ItemGroup>
     <Content Include="../../windows/TVBox.Windows/Assets/catalog/default.json" Link="assets/catalog/default.json" CopyToOutputDirectory="PreserveNewest" />
 </ItemGroup>
 </Project>

@@ -11,25 +11,26 @@ public static class SourceDiscovery
     public const int ConcurrentSites = 10;
     public static async Task RunAsync(CatalogItem title, string seedKey, string seedId, string preferredKey,
         string episodeName, Action<PlaybackCandidate> found, Action<DiscoveryStatus> status, CancellationToken ct,
-        string onlySiteKey = null, string excludeSiteKey = null, bool ignoreCache = false, string preference = null, bool adOnly = false, bool internationalOnly = false)
+        string onlySiteKey = null, string excludeSiteKey = null, bool ignoreCache = false, string preference = null, bool adOnly = false, bool internationalOnly = false, bool auditAll = false)
     {
         // A running generation must not change rules midway when the settings combo changes.
         var quality = (preference ?? Setting.SourcePreference) == "quality";
         var health = ignoreCache ? new Dictionary<string, SourceHealth>() : await Task.Run(() => SourceLearning.Health(title, episodeName, VodConfigService.Cid), ct).ConfigureAwait(false);
         var sites = SiteRegistry.Active.Where(s => (s.IsSearchable || s.Type == InternationalSources.SiteType) && !s.IsHidden)
-            .Where(s => (onlySiteKey == null || s.Key == onlySiteKey) && s.Key != excludeSiteKey && (!adOnly || SourceAdPolicy.Get(title, s.Key) == AdMark.Ads) && (!internationalOnly || s.Type == InternationalSources.SiteType))
+            .Where(s => (onlySiteKey == null || s.Key == onlySiteKey) && s.Key != excludeSiteKey && (!adOnly || SourceAdPolicy.Rank(title, s.Key) >= 2) && (!internationalOnly || s.Type == InternationalSources.SiteType))
             .OrderByDescending(s => s.Key == (string.IsNullOrEmpty(seedKey) ? preferredKey : seedKey)).ToList();
-        var initial = sites.Where(s => ignoreCache || s.Key == seedKey || SourceLearning.Eligible(health, s.Key, DateTimeOffset.UtcNow)).ToList();
+        var initial = sites.Where(s => auditAll || ignoreCache || s.Key == seedKey || SourceLearning.Eligible(health, s.Key, DateTimeOffset.UtcNow)).ToList();
         var verified = 0;
         var contacted = new System.Collections.Concurrent.ConcurrentDictionary<string, byte>();
         using var workers = new SemaphoreSlim(ConcurrentSites);
-        var regularSites = sites.Where(s => adOnly || onlySiteKey != null || SourceAdPolicy.Get(title, s.Key) != AdMark.Ads).ToList();
+        var regularSites = sites.Where(s => onlySiteKey != null || SourceAdPolicy.Rank(title, s.Key) < 2).ToList();
         var regular = initial.Intersect(regularSites).ToList();
         await RunSites(regular.OrderBy(s => SourceAdPolicy.Rank(title, s.Key))).ConfigureAwait(false);
         // Previously working ad sources cannot make the warm cache exclude all unmarked alternatives.
         if (!ct.IsCancellationRequested && verified == 0)
             await RunSites(regularSites.Except(regular).Where(s => !health.TryGetValue(s.Key, out var h) || h.Good || DateTimeOffset.UtcNow - h.CheckedAt >= TimeSpan.FromMinutes(30))).ConfigureAwait(false);
-        if (!ct.IsCancellationRequested && verified == 0) await RunSites(sites.Except(regularSites)).ConfigureAwait(false);
+        foreach (var fallback in sites.Except(regularSites).GroupBy(s => SourceAdPolicy.Rank(title, s.Key)).OrderBy(g => g.Key))
+            if (!ct.IsCancellationRequested && (auditAll || verified == 0)) await RunSites(fallback).ConfigureAwait(false);
         foreach (var cached in sites.Where(s => !contacted.ContainsKey(s.Key)))
             App.Post(() => { if (!ct.IsCancellationRequested) status(new(cached.Key, cached.Name, "已采用本集缓存；刷新可重新检测", false)); });
 

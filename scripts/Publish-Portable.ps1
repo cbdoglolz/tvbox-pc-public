@@ -1,10 +1,10 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [ValidateSet("x64")]
     [string]$Architecture = "x64",
 
     [ValidatePattern("^\d+\.\d+\.\d+$")]
-    [string]$Version = "0.8.7",
+    [string]$Version = "0.8.8",
 
     [string]$OutputRoot = "",
 
@@ -594,27 +594,9 @@ if (Test-Path -LiteralPath $readme -PathType Leaf) {
 
 $publicDocs = Join-Path $publishDirectory "docs"
 New-Item -ItemType Directory -Force -Path $publicDocs | Out-Null
-foreach ($document in @("UPSTREAM.md", "ACCEPTANCE.md", "PLAYBACK-FLOW.md", "PUBLIC-RELEASE.md")) {
-    $documentPath = Join-Path $repoRoot "docs\$document"
-    if (Test-Path -LiteralPath $documentPath -PathType Leaf) {
-        Copy-Item -LiteralPath $documentPath -Destination (Join-Path $publicDocs $document) -Force
-    }
-}
-Get-ChildItem -LiteralPath (Join-Path $repoRoot 'docs') -Filter 'ACCEPTANCE-*.md' -File | Copy-Item -Destination $publicDocs -Force
+# Developer reports and acceptance records remain local. Ship only attribution/licenses.
+Copy-Item -LiteralPath (Join-Path $repoRoot 'docs\UPSTREAM.md') -Destination $publicDocs -Force
 Copy-Item -LiteralPath (Join-Path $repoRoot 'docs\licenses') -Destination $publicDocs -Recurse -Force
-$resourcePlan = Join-Path $repoRoot 'docs\development\TVBox-PC-v0.9.0-HD-Resource-Integration-Plan.md'
-if (Test-Path -LiteralPath $resourcePlan) {
-    $developmentDocs = Join-Path $publicDocs 'development'
-    New-Item -ItemType Directory -Path $developmentDocs -Force | Out-Null
-    Copy-Item -LiteralPath $resourcePlan -Destination $developmentDocs -Force
-}
-if (Test-Path -LiteralPath (Join-Path $repoRoot "docs\reports\TVBox-PC-v$Version-Update-Report.md")) {
-    $reportDirectory = Join-Path $publicDocs 'reports'
-    New-Item -ItemType Directory -Force -Path $reportDirectory | Out-Null
-    Copy-Item -LiteralPath (Join-Path $repoRoot "docs\reports\TVBox-PC-v$Version-Update-Report.md") -Destination $reportDirectory -Force
-    Copy-Item -LiteralPath (Join-Path $repoRoot 'docs\reports\images') -Destination $reportDirectory -Recurse -Force
-    Get-ChildItem -LiteralPath (Join-Path $repoRoot 'docs\reports') -Filter '*.md' -File | Copy-Item -Destination $reportDirectory -Force
-}
 $license = Join-Path $repoRoot "LICENSE"
 if (Test-Path -LiteralPath $license -PathType Leaf) {
     Copy-Item -LiteralPath $license -Destination (Join-Path $publishDirectory "LICENSE") -Force

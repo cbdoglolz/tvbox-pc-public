@@ -19,7 +19,7 @@ public sealed class SearchSuggestionRow : UserControl
             var panel = new StackPanel { Spacing = 7, Width = 390 };
             panel.Children.Add(new TextBlock { Text = "近期热门", FontSize = 12, Opacity = 0.7 });
             var grid = new VariableSizedWrapGrid { Orientation = Orientation.Horizontal, ItemWidth = 130, ItemHeight = 50, MaximumRowsOrColumns = 3 };
-            foreach (var query in suggestion.Hot) { var button = new Button { Content = new TextBlock { Text = query, TextWrapping = TextWrapping.Wrap, MaxLines = 2, FontSize = 12 }, Margin = new(0, 0, 5, 4), HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Stretch }; ToolTipService.SetToolTip(button, query); button.Click += (_, _) => App.Main.SubmitGlobalSearch(query); grid.Children.Add(button); }
+            foreach (var query in suggestion.Hot) { var button = new Button { Content = new TextBlock { Text = query, TextWrapping = TextWrapping.Wrap, MaxLines = 2, FontSize = 12 }, Margin = new(0, 0, 5, 4), HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Stretch }; button.PointerPressed += (_, e) => e.Handled = true; ToolTipService.SetToolTip(button, query); button.Click += (_, _) => App.Main.SubmitGlobalSearch(query); grid.Children.Add(button); }
             panel.Children.Add(grid); Content = panel;
         } else {
             var grid = new Grid { Width = 390, Padding = new(0, 3, 0, 3) }; grid.ColumnDefinitions.Add(new() { Width = new(1, GridUnitType.Star) }); grid.ColumnDefinitions.Add(new() { Width = GridLength.Auto });

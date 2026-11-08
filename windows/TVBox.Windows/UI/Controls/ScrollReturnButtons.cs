@@ -5,15 +5,15 @@ namespace TVBoxForWindows.UI.Controls;
 
 public sealed class ScrollReturnButtons : UserControl
 {
-    readonly Button _up = new() { Content = "↑", Width = 34, Height = 34, Padding = new(0) };
-    readonly Button _down = new() { Content = "↓", Width = 34, Height = 34, Padding = new(0) };
+    readonly Button _up = new() { Content = "▲", Width = 34, Height = 34, Padding = new(0) };
+    readonly Button _down = new() { Content = "▼", Width = 34, Height = 34, Padding = new(0) };
     ScrollViewer _scroll;
     double _returnOffset;
     Action _jumping;
     public ScrollReturnButtons()
     {
-        HorizontalAlignment = HorizontalAlignment.Right; VerticalAlignment = VerticalAlignment.Top; Margin = new(0, 8, 18, 0);
-        var panel = new StackPanel { Spacing = 5 }; panel.Children.Add(_up); panel.Children.Add(_down); Content = panel;
+        HorizontalAlignment = HorizontalAlignment.Right; VerticalAlignment = VerticalAlignment.Stretch; Margin = new(0, 8, 18, 0);
+        var panel = new Grid(); _up.VerticalAlignment = VerticalAlignment.Top; _down.VerticalAlignment = VerticalAlignment.Bottom; _down.Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Windows.UI.Color.FromArgb(100, 137, 82, 210)); panel.Children.Add(_up); panel.Children.Add(_down); Content = panel;
         ToolTipService.SetToolTip(_up, "回到顶部，保留瀑布流与当前位置"); ToolTipService.SetToolTip(_down, "回到刚才浏览的位置");
         _up.Click += (_, _) => { if (_scroll == null) return; _returnOffset = _scroll.VerticalOffset; _jumping?.Invoke(); _scroll.ChangeView(null, 0, null, true); Refresh(); };
         _down.Click += (_, _) => { if (_scroll == null) return; var offset = _returnOffset; _returnOffset = 0; _jumping?.Invoke(); _scroll.ChangeView(null, offset, null, true); Refresh(); }; Refresh();

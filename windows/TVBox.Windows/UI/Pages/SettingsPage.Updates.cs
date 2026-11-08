@@ -6,6 +6,18 @@ namespace TVBoxForWindows.UI.Pages;
 
 public sealed partial class SettingsPage
 {
+    async void OnViewChanges(object sender, RoutedEventArgs e)
+    {
+        var panel = new StackPanel { Spacing = 12, MaxWidth = 520 };
+        try {
+            using var notes = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(AppPaths.InstallRoot, "assets", "release-notes.json")));
+            foreach (var version in notes.RootElement.EnumerateArray()) {
+                panel.Children.Add(new TextBlock { Text = "v" + version.GetProperty("version").GetString() + " · " + version.GetProperty("date").GetString(), FontSize = 19, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+                foreach (var change in version.GetProperty("changes").EnumerateArray()) panel.Children.Add(new TextBlock { Text = "• " + change.GetString(), TextWrapping = TextWrapping.Wrap });
+            }
+        } catch { panel.Children.Add(new TextBlock { Text = "本版本的更新说明暂不可用。" }); }
+        await new ContentDialog { RequestedTheme = ActualTheme, XamlRoot = XamlRoot, Title = "版本更新", Content = new ScrollViewer { Content = panel, MaxHeight = 440, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled }, CloseButtonText = "关闭" }.ShowAsync();
+    }
     ReleaseDownload _availableUpdate;
     StagedUpdate _stagedUpdate;
     bool _updateBusy;

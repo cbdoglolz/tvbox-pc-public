@@ -5,7 +5,7 @@ namespace TVBoxForWindows.Net
     {
         internal static readonly Dictionary<string, byte[]> Responses = new();
         static readonly System.Net.Http.HttpClient ProbeClient = new(new ProbeHandler());
-        public static System.Net.Http.HttpClient Client(string proxyUrl = null) => ProbeClient;
+        public static System.Net.Http.HttpClient Client(string proxyUrl = null, bool redirect = true, bool bypassProxy = false) => ProbeClient;
         public static Task<string> GetString(string url) => throw new InvalidOperationException("Unexpected extension request");
         public static Task<GuardResponse> Get(string url, int timeoutMs) =>
             throw new InvalidOperationException("Unexpected HTTP during bundled asset load: " + url);
@@ -13,9 +13,11 @@ namespace TVBoxForWindows.Net
     internal class ProbeHandler : System.Net.Http.HttpMessageHandler
     {
         public static Func<System.Net.Http.HttpRequestMessage, CancellationToken, Task> BeforeSend;
+        public static Func<System.Net.Http.HttpRequestMessage, System.Net.Http.HttpResponseMessage> ResponseOverride;
         protected override async Task<System.Net.Http.HttpResponseMessage> SendAsync(System.Net.Http.HttpRequestMessage request, CancellationToken ct)
         {
             if (BeforeSend != null) await BeforeSend(request, ct);
+            if (ResponseOverride != null) return ResponseOverride(request);
             var response = new System.Net.Http.HttpResponseMessage(ResponsesContain(request, out var bytes) ? System.Net.HttpStatusCode.OK : System.Net.HttpStatusCode.NotFound)
             { RequestMessage = request, Content = new System.Net.Http.ByteArrayContent(bytes ?? Array.Empty<byte>()) };
             return response;

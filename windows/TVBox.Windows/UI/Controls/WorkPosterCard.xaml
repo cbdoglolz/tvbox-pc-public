@@ -20,6 +20,6 @@
         </Grid>
         <controls:RatingStrip x:Name="Scores" Grid.Row="1"/>
         <Button x:Name="TitleButton" Grid.Row="2" Content="{Binding Title}" Click="OnDetails" Padding="0" Background="Transparent" BorderThickness="0" HorizontalAlignment="Left" MaxWidth="158" MinHeight="22" ToolTipService.ToolTip="点击片名进入详情"/>
-        <TextBlock x:Name="Subtitle" Grid.Row="3" Text="{Binding Subtitle}" Foreground="{ThemeResource DiscoveryMuted}" FontSize="11" TextTrimming="CharacterEllipsis" MaxWidth="158"/>
+        <TextBlock x:Name="Subtitle" Grid.Row="3" Text="{Binding CardSubtitle}" Foreground="{ThemeResource DiscoveryMuted}" FontSize="11" TextTrimming="CharacterEllipsis" MaxWidth="158"/>
     </Grid>
 </UserControl>

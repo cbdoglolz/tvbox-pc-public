@@ -17,7 +17,7 @@ with zipfile.ZipFile(package) as archive:
     prefix = roots.pop() + "/"
     assert not any(Path(name).name.lower() in forbidden or '.credential' in Path(name).name.lower() or Path(name).name.lower().startswith('metadata-v4') for name in names), "User data leaked into package"
     assert len([n for n in names if n.endswith("/TVBox.exe")]) == 1, "Duplicate app entry"
-    for required in ["TVBox.exe", "libs/TVBox.dll", "libs/e_sqlite3.dll", "libs/Microsoft.Data.Sqlite.dll", "libs/Microsoft.ui.xaml.dll", "libs/Microsoft.UI.Xaml.Phone.dll", "libs/Microsoft.UI.pri", "libs/Microsoft.UI.Xaml.Controls.pri", "libs/zh-CN/Microsoft.ui.xaml.dll.mui", "assets/icons/douban.png", "assets/icons/netflix.svg", "assets/icons/netflix-wordmark.svg", "assets/catalog/default.json", "LICENSE", "README.md", "docs/ACCEPTANCE.md", "docs/UPSTREAM.md", "THIRD-PARTY-NOTICES.md", "ffmpeg/avcodec-62.dll"]:
+    for required in ["TVBox.exe", "libs/TVBox.dll", "libs/e_sqlite3.dll", "libs/Microsoft.Data.Sqlite.dll", "libs/Microsoft.ui.xaml.dll", "libs/Microsoft.UI.Xaml.Phone.dll", "libs/Microsoft.UI.pri", "libs/Microsoft.UI.Xaml.Controls.pri", "libs/zh-CN/Microsoft.ui.xaml.dll.mui", "assets/icons/douban.png", "assets/icons/netflix.svg", "assets/icons/netflix-wordmark.svg", "assets/catalog/default.json", "LICENSE", "README.md", "docs/UPSTREAM.md", "THIRD-PARTY-NOTICES.md", "ffmpeg/avcodec-62.dll"]:
         assert prefix + required in names, f"Missing {required}"
     import json
     provider_root = repo / "windows/TVBox.Windows/Assets/providers"
@@ -28,19 +28,10 @@ with zipfile.ZipFile(package) as archive:
         assert hashlib.sha256(script.read_bytes()).hexdigest() == provider["sha256"], "Provider provenance hash mismatch"
     default = archive.read(prefix + "assets/catalog/default.json")
     assert default == (repo / "windows/TVBox.Windows/Assets/catalog/default.json").read_bytes(), "Stale defaults"
-    for document in ["README.md", "docs/ACCEPTANCE.md", "docs/UPSTREAM.md", "docs/PUBLIC-RELEASE.md", "THIRD-PARTY-NOTICES.md"]:
-        assert archive.read(prefix + document) == (repo / document).read_bytes(), f"Stale document: {document}"
-    for document in [f"docs/reports/TVBox-PC-v{version}-Update-Report.md", "docs/licenses/Microsoft.Data.Sqlite-MIT.txt", "docs/licenses/SQLitePCLRaw-Apache-2.0.txt"]:
-        assert archive.read(prefix + document) == (repo / document).read_bytes(), f"Missing or stale release evidence: {document}"
-    for document in list((repo / 'docs').glob('ACCEPTANCE-*.md')) + list((repo / 'docs/reports').glob('*.md')):
-        relative = document.relative_to(repo).as_posix()
-        assert archive.read(prefix + relative) == document.read_bytes(), f"Missing or stale linked document: {relative}"
-    resource_plan = repo / 'docs/development/TVBox-PC-v0.9.0-HD-Resource-Integration-Plan.md'
-    assert archive.read(prefix + resource_plan.relative_to(repo).as_posix()) == resource_plan.read_bytes(), 'Missing or stale HD resource design linked by README and update report'
-    for document in (repo / 'docs/reports/images').glob('*'):
-        if document.is_file():
-            relative = document.relative_to(repo).as_posix()
-            assert archive.read(prefix + relative) == document.read_bytes(), f"Missing or stale screenshot: {relative}"
+    for document in ["README.md", "docs/UPSTREAM.md", "THIRD-PARTY-NOTICES.md", "docs/licenses/Microsoft.Data.Sqlite-MIT.txt", "docs/licenses/SQLitePCLRaw-Apache-2.0.txt"]:
+        assert archive.read(prefix + document) == (repo / document).read_bytes(), f"Missing or stale attribution: {document}"
+    assert archive.read(prefix + "assets/release-notes.json") == (repo / "windows/TVBox.Windows/Assets/release-notes.json").read_bytes(), "Missing user-facing update notes"
+    assert not any('/docs/reports/' in n or '/docs/development/' in n or '/docs/ACCEPTANCE' in n or n.endswith('/CHANGELOG.md') or n.endswith('/AGENTS.md') for n in names), "Developer documents should remain local"
     assert not any('/locales/winui/' in n for n in names), "Windows App SDK 2.x WinUI resources must remain beside their modules in libs"
     compiled = repo / "windows/TVBox.Windows/bin/x64/Release/net9.0-windows10.0.19041.0/win-x64/TVBox.dll"
     assert archive.read(prefix + "libs/TVBox.dll") == compiled.read_bytes(), "Stale application assembly"

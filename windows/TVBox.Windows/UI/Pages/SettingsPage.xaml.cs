@@ -97,21 +97,26 @@ public sealed partial class SettingsPage : Page
         MetadataHintHidden.IsChecked = Setting.GetBool("tmdb_hint_hidden");
         PrimaryRatingCombo.SelectedIndex = Setting.GetString("catalog_primary_rating", "douban") switch { "tmdb" => 1, _ => 0 };
         SecondaryRatingToggle.IsChecked = Setting.GetBool("catalog_secondary_rating", true);
+        TmdbSavedBadge.Visibility = TmdbCredentials.HasCredential ? Visibility.Visible : Visibility.Collapsed;
         TmdbStatus.Text = TmdbCredentials.HasCredential ? "已安全保存个人凭据；仅用于TMDB资料请求" : "未配置；豆瓣与普通点播正常可用";
         _updating = false;
         RefreshCacheSize();
         LoadAbout();
     }
 
-    public void FocusMetadataSettings() => DispatcherQueue.TryEnqueue(() => { SettingsScroll.ChangeView(null, 0, null, true); TmdbKeyBox.Focus(FocusState.Programmatic); });
+    public void FocusMetadataSettings() => DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => {
+        UpdateLayout();
+        TmdbKeyBox.StartBringIntoView(new BringIntoViewOptions { VerticalAlignmentRatio = 0.25, AnimationDesired = false });
+        TmdbKeyBox.Focus(FocusState.Programmatic);
+    });
     void OnSaveTmdb(object sender, RoutedEventArgs e)
     {
-        try { TmdbCredentials.Save(TmdbKeyBox.Password); TmdbKeyBox.Password = ""; TmdbStatus.Text = "已加密保存。可测试连接；删除凭据也不影响普通点播"; }
+        try { TmdbCredentials.Save(TmdbKeyBox.Password); TmdbSavedBadge.Visibility = Visibility.Visible; TmdbKeyBox.Password = ""; TmdbStatus.Text = "已加密保存。可测试连接；删除凭据也不影响普通点播"; }
         catch (Exception error) { TmdbStatus.Text = error is ArgumentException ? error.Message : "安全保存失败，请稍后重试"; }
     }
     void OnClearTmdb(object sender, RoutedEventArgs e)
     {
-        try { TmdbCredentials.Clear(); TmdbKeyBox.Password = ""; TmdbStatus.Text = "已删除凭据；普通点播仍可使用"; }
+        try { TmdbCredentials.Clear(); TmdbSavedBadge.Visibility = Visibility.Collapsed; TmdbKeyBox.Password = ""; TmdbStatus.Text = "已删除凭据；普通点播仍可使用"; }
         catch { TmdbStatus.Text = "删除失败，请稍后重试"; }
     }
     async void OnTestTmdb(object sender, RoutedEventArgs e)
@@ -381,7 +386,7 @@ public sealed partial class SettingsPage : Page
     async void RefreshSourceStatistics()
     {
         var adRows = SourceAdPolicy.Statistics().ToList();
-        AdStatisticsText.Text = adRows.Count == 0 ? "尚未标记；在播放器底部可标记当前来源" : string.Join("\n", adRows.Select(r => $"{r.Name}：😈 有广告 {r.Ads} 次 · 🪽 无广告 {r.Clean} 次"));
+        AdStatisticsText.Text = adRows.Count == 0 ? "尚未标记；在播放器底部可标记当前来源" : string.Join("\n", adRows.Select(r => $"{r.Name}：😈 有插入广告 {r.Ads} 次 · 文字广告 {r.TextAds} 次 · 🪽 无广告 {r.Clean} 次"));
         try { var rows = await Task.Run(SourceLearning.Statistics); SourceStatisticsText.Text = rows.Count == 0 ? "尚无实际播放统计" : string.Join("\n\n", rows.OrderByDescending(r => r.Wins).ThenBy(r => r.Name).Select(r => r.Summary)); }
         catch { SourceStatisticsText.Text = "统计暂不可读，原文件保留"; }
     }

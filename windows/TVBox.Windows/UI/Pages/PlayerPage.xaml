@@ -610,7 +610,7 @@
                                         <Grid MinHeight="38" Padding="6,0">
                                             <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
                                             <Button Tag="{Binding AdSiteKey}" Visibility="{Binding HasAdSite, Converter={StaticResource BoolToVisibility}}" Click="OnMarkSourceRow" Padding="4" Margin="0,0,7,0" ToolTipService.ToolTip="{Binding AdLabel}"><controls:AdMarkGlyph Mark="{Binding AdStatus}"/></Button>
-                                            <StackPanel Grid.Column="1"><TextBlock Text="{Binding Detail}" Foreground="{Binding DetailColor}" FontSize="12" Visibility="{Binding Detail, Converter={StaticResource StringToVisibility}}"/><TextBlock Text="{Binding Label}"
+                                            <StackPanel Grid.Column="1"><TextBlock Text="{Binding Detail}" Foreground="{Binding DetailColor}" FontSize="12" Visibility="{Binding Detail, Converter={StaticResource StringToVisibility}}"/><TextBlock Opacity="{Binding LabelOpacity}" Foreground="{Binding LabelColor}" Text="{Binding Label}"
                                                        VerticalAlignment="Center"
                                                        TextTrimming="CharacterEllipsis"/></StackPanel>
                                             <FontIcon Grid.Column="2"

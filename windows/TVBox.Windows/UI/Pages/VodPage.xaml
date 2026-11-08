@@ -27,7 +27,7 @@
         <!-- 顶部：标题 + 站点下拉 + 筛选开关 + 加载中 -->
         <StackPanel Spacing="10">
           <StackPanel Orientation="Horizontal" Spacing="12">
-            <TextBlock Text="资源浏览" Style="{StaticResource PageTitleTextStyle}" VerticalAlignment="Center"/>
+            <TextBlock x:Name="ResourceTitle" Text="资源浏览" Style="{StaticResource PageTitleTextStyle}" VerticalAlignment="Center"/>
             <ComboBox x:Name="SiteCombo"
                       MinWidth="180" MaxWidth="280"
                       VerticalAlignment="Center"

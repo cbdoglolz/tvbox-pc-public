@@ -11,7 +11,7 @@ public partial class PlayerCore : IDisposable
     const string TAG = "PlayerCore";
     const string MissingFFmpegMsg = "FFmpeg 解码库未就绪：安装内容可能不完整，请重新安装或完整解压 TVBox";
     const long TransferSampleIntervalMs = 500;
-    const long SeekRequestTimeoutMs = 8000;
+    const long SeekRequestTimeoutMs = 20000;
     const long ResumeSeekTimeoutMs = 45000;
     const int SeekFailureSettleMs = 150;
     static readonly string[] RequiredFFmpegLibraries =
@@ -35,6 +35,7 @@ public partial class PlayerCore : IDisposable
 
     DispatcherQueueTimer _timer;
     PlayItem _item;
+    HlsConnectionRelay _hlsRelay;
     int _scale;
     int _openGeneration;
     int _openingGeneration;
@@ -329,7 +330,14 @@ public partial class PlayerCore : IDisposable
             ApplyFormat(request.Format);
             Fly.Config.Video.VideoAcceleration = Setting.Flag != 0;
             Core.Logger.D(TAG, $"打开媒体 #{generation} {DescribeUrl(request.Url)}, startMs={request.StartPositionMs}, format={request.Format ?? "auto"}, headers=[{string.Join(',', request.Headers.Keys)}]");
-            Fly.OpenAsync(request.Url);
+            _hlsRelay?.Dispose(); _hlsRelay = null;
+            var openUrl = request.Url;
+            if (!request.IsLive && options.GetValueOrDefault("http_persistent") == "1" && Setting.GetBool("vod_hls_relay", true)) {
+                _hlsRelay = new HlsConnectionRelay(request.Url, request.Headers, Server.LocalServer.Instance.Port); openUrl = _hlsRelay.Url;
+                // The private loopback relay already applies upstream headers and proxy rules.
+                Fly.Config.Demuxer.FormatOpt.Remove("http_proxy"); Fly.Config.Demuxer.FormatOpt.Remove("headers"); Fly.Config.Demuxer.FormatOpt.Remove("referer");
+            }
+            Fly.OpenAsync(openUrl);
         }
         catch (Exception e)
         {
@@ -344,7 +352,7 @@ public partial class PlayerCore : IDisposable
         ResetSeekRequests();
         Volatile.Write(ref _openingGeneration, 0);
         Volatile.Write(ref _activePlaybackGeneration, 0);
-        _item = null;
+        _item = null; _hlsRelay?.Dispose(); _hlsRelay = null;
         ResetTransferSampling(true);
         try { Fly?.Stop(); } catch { }
     }
@@ -484,7 +492,7 @@ public partial class PlayerCore : IDisposable
 
         if (timedOut != null)
         {
-            Core.Logger.E(TAG, $"定位超时: {timedOut.TargetMs}ms");
+            Core.Logger.E(TAG, $"定位超时: target={timedOut.TargetMs}ms current={PositionMs}ms buffering={IsBuffering} freshFrames={(Fly?.Video?.FramesDisplayed ?? 0) - timedOut.FrameBaseline} waited={now-timedOut.StartedTick}ms");
             QueueSeekCompletion(timedOut, false);
         }
     }
@@ -685,6 +693,7 @@ public partial class PlayerCore : IDisposable
         opt.Remove("headers"); opt.Remove("user_agent"); opt.Remove("referer"); opt.Remove("http_proxy");
         opt.Remove("decryption_key");
         if (!ApplyDrm(item.Drm, opt, generation)) return null;
+        Models.PlaybackNetworkPolicy.Apply(opt, item.Url, item.Format, item.IsLive, Setting.GetBool("vod_connection_reuse", true));
         ApplyHeaders(item.Headers, item.Url, opt);
         return opt;
     }
@@ -818,7 +827,7 @@ public partial class PlayerCore : IDisposable
         var generation = Volatile.Read(ref _openGeneration);
         var item = _item;
         if (item == null || Volatile.Read(ref _openingGeneration) != generation) return;
-        if (!string.IsNullOrWhiteSpace(e.Url) && !string.Equals(e.Url, item.Url, StringComparison.Ordinal))
+        if (!string.IsNullOrWhiteSpace(e.Url) && !string.Equals(e.Url, item.Url, StringComparison.Ordinal) && !string.Equals(e.Url, _hlsRelay?.Url, StringComparison.Ordinal))
         {
             Core.Logger.D(TAG, $"忽略旧媒体打开结果 #{generation}: {DescribeUrl(e.Url)}");
             return;
@@ -986,6 +995,7 @@ public partial class PlayerCore : IDisposable
 
     public void Dispose()
     {
+        _hlsRelay?.Dispose(); _hlsRelay = null;
         if (_disposed) return;
         _disposed = true;
         Interlocked.Increment(ref _openGeneration);
